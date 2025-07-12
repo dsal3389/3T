@@ -4,7 +4,7 @@ mod devices;
 
 pub use devices::DevicesView;
 
-pub trait View: Sync + Send + Sized {
+pub trait View {
     async fn handle_key_event(self, event: crossterm::event::KeyEvent);
 
     async fn on_tick(self);

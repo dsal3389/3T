@@ -1,4 +1,4 @@
-use tokio::sync::mpsc::Sender;
+use std::sync::Arc;
 use ratatui::prelude::*;
 use ratatui::widgets::{
     Block,
@@ -6,17 +6,18 @@ use ratatui::widgets::{
 };
 use ratatui::symbols::border;
 
+use crate::app::AppState;
 use crate::event::Event;
 use super::View;
 
 pub struct DevicesView {
-    app_tx_event: Sender<Event>,
+    app_state: Arc<AppState>,
     count: u32
 }
 
 impl DevicesView {
-    pub fn new(app_tx_event: Sender<Event>) -> DevicesView {
-        DevicesView { app_tx_event, count: 0 }
+    pub fn new(app_state: Arc<AppState>) -> DevicesView {
+        DevicesView { app_state, count: 0 }
     }
 }
 
@@ -28,7 +29,7 @@ impl View for &mut DevicesView {
     async fn on_tick(self) {
         log::info!("on  tick called");
         self.count += 1;
-        self.app_tx_event.send(Event::ReDraw).await.unwrap();
+        self.app_state.app_tx_events.send(Event::ReDraw).await.unwrap();
     }
 }
 

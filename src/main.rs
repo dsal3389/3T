@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use ratatui::DefaultTerminal;
 
 mod logging;
@@ -15,7 +14,7 @@ fn setup_logger() {
 }
 
 async fn run(terminal: DefaultTerminal) -> anyhow::Result<()> {
-    let app = Arc::new(App::new());
+    let app = App::new();
     app.run(terminal).await
 }
 
