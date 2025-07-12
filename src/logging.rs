@@ -26,7 +26,7 @@ impl AppLogger {
 }
 
 impl log::Log for AppLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
+    fn enabled(&self, _metadata: &Metadata) -> bool {
         true
     }
 

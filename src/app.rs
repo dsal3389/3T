@@ -2,9 +2,11 @@ use std::sync::Arc;
 use std::cell::Cell;
 use std::time::Duration;
 
+use crossterm::event::{KeyCode, KeyModifiers};
+use ratatui::prelude::*;
+
 use tokio::sync::mpsc::{Sender, Receiver, channel};
 use tokio::sync::Mutex;
-use ratatui::prelude::*;
 
 use crate::views::{View, AppView};
 use crate::event::Event;
@@ -16,8 +18,8 @@ pub struct App {
     view: Mutex<Option<AppView>>,
 
     /// indicator for the `tick` async task to tell if the
-    /// `Event::Redraw` was consumed and it can schedule another one
-    redrawn: Mutex<Cell<bool>>
+    /// `Event::Tick` was consumed and it can schedule another one
+    ticked: Mutex<Cell<bool>>
 }
 
 impl App {
@@ -27,7 +29,7 @@ impl App {
             app_tx_events: tx,
             app_rx_events: Mutex::new(rx),
             view: Mutex::new(None),
-            redrawn: Mutex::new(Cell::new(false))
+            ticked: Mutex::new(Cell::new(false))
         }
     }
 
@@ -39,7 +41,7 @@ impl App {
             .lock()
             .await
             .insert(
-                AppView::DevicesView(crate::views::DevicesView::default())
+                AppView::DevicesView(crate::views::DevicesView::new(self.app_tx_events.clone()))
             );
 
         // the current run loop should be the only owner of this
@@ -48,21 +50,26 @@ impl App {
         let mut app_rx_events = self.app_rx_events.lock().await;
 
         while let Some(event) = app_rx_events.recv().await {
-            let view = self.view.lock().await;
+            let mut view = self.view.lock().await;
 
             match event {
+                Event::Exit => break,
                 Event::ReDraw => {
                     terminal.draw(|frame| {
                         frame.render_widget(
                             view.as_ref().unwrap(),
                             frame.area()
                         );
-                    });
-                    self.redrawn.lock().await.set(true);
+                    })?;
                 },
+                Event::Tick => {
+                    view.as_mut().unwrap().on_tick().await ;
+                    self.ticked.lock().await.set(true);
+                },
+
                 Event::KeyEvent(event) => {
-                    view.as_ref().unwrap().handle_key_event(event).await;
-                }
+                    view.as_mut().unwrap().handle_key_event(event).await;
+                },
             }
         }
         Ok(())
@@ -71,36 +78,37 @@ impl App {
     fn preper_for_run(self: Arc<Self>) {
         let app_wref = Arc::downgrade(&self);
 
-        // create a redraw task to prompt the app the redraw it self
-        // every 250ms
         tokio::spawn(async move {
-            // fireoff the first unconditioned redraw request
-            // to draw the app for the first time
+            // fire off the first uncoditioned redraw event and tick even
+            // the redraw event must be called before the tick event because the view
+            // can trigger its own `ReDraw` event (it is not required),
+            // if it does we will have 2 redraw events
+            // if it doesn't the app will might not be drawn
             match app_wref.upgrade() {
-                Some(app) => app.app_tx_events.send(Event::ReDraw).await.unwrap(),
+                Some(app) => {
+                    app.app_tx_events.send(Event::ReDraw).await.unwrap();
+                    app.app_tx_events.send(Event::Tick).await.unwrap();
+                },
                 None => return
             };
 
             loop {
                 match app_wref.upgrade() {
                     Some(app) => {
-                        let redrawn = app.redrawn.lock().await;
+                        let ticked = app.ticked.lock().await;
 
                         // if the `redrawn` value was set `true` it means
                         // we can schedule another `ReDraw` event for the app
                         // else we will sleep again for 250ms
-                        if redrawn.get() {
-                            redrawn.set(false);
-                            app.app_tx_events.send(Event::ReDraw).await.unwrap();
+                        if ticked.get() {
+                            ticked.set(false);
+                            app.app_tx_events.send(Event::Tick).await.unwrap();
                         }
                     },
-                    None => {
-                        log::info!("breaking");
-                        break;
-                    }
+                    None => break
                 };
 
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                tokio::time::sleep(Duration::from_secs(1)).await;
             }
         });
 
@@ -125,11 +133,20 @@ impl App {
 
                 match crossterm::event::read().unwrap() {
                     crossterm::event::Event::Key(event) => {
-                        let _ = app.app_tx_events.send(Event::KeyEvent(event)).await;
+                        let app_event = match event {
+                            crossterm::event::KeyEvent {
+                                code: KeyCode::Char('c'),
+                                modifiers: KeyModifiers::CONTROL,
+                                ..
+                            } | crossterm::event::KeyEvent {
+                                code: KeyCode::Esc,
+                                ..
+                            } => Event::Exit,
+                            event => Event::KeyEvent(event)
+                        };
+                        app.app_tx_events.send(app_event).await.unwrap()
                     }
-                    _ => {
-                        log::info!("other event recv");
-                    }
+                    _ => {}
                 }
             }
         });
