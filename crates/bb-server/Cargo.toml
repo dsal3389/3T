@@ -1,0 +1,12 @@
+[package]
+name = "bb-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+bb-tui = { version = "0.1.0", path = "../bb-tui" }
+log.workspace = true
+rand = "0.8.5"
+russh = "0.53.0"
+tokio.workspace = true

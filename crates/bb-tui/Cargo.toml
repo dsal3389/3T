@@ -1,0 +1,10 @@
+[package]
+name = "bb-tui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+log.workspace = true
+ratatui = "0.29.0"
+tokio.workspace = true
