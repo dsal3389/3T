@@ -1,5 +1,5 @@
-mod events;
 mod app;
+mod events;
 
-pub use events::AppEvent;
 pub use app::App;
+pub use events::AppEvent;

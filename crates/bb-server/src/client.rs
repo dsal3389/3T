@@ -1,13 +1,13 @@
-use russh::{Pty, Channel, ChannelId, Sig};
-use russh::server::{Auth, Handler, Msg, Session};
-use russh::keys::PublicKey;
 use anyhow::Context;
+use russh::keys::PublicKey;
+use russh::server::{Auth, Handler, Msg, Session};
+use russh::{Channel, ChannelId, Pty, Sig};
 
 use crate::channel::AppChannel;
 
 #[derive(Default)]
 pub(crate) struct AppClient {
-    app_channel: Option<AppChannel>
+    app_channel: Option<AppChannel>,
 }
 
 impl Handler for AppClient {
@@ -30,7 +30,7 @@ impl Handler for AppClient {
         &mut self,
         channel: ChannelId,
         data: &[u8],
-        _: &mut Session
+        _: &mut Session,
     ) -> anyhow::Result<()> {
         println!("recv data {}: {:?}", channel, data);
         Ok(())
@@ -45,14 +45,18 @@ impl Handler for AppClient {
         _: u32,
         _: u32,
         _: &[(Pty, u32)],
-        session: &mut Session
+        session: &mut Session,
     ) -> anyhow::Result<()> {
-        let app_channel = self.app_channel
-                              .as_mut()
-                              .context("expected `channel_open_session` to already be called")?;
-        match app_channel.create_pty(session.handle(), col_width as u16, row_height as u16).await {
+        let app_channel = self
+            .app_channel
+            .as_mut()
+            .context("expected `channel_open_session` to already be called")?;
+        match app_channel
+            .create_pty(session.handle(), col_width as u16, row_height as u16)
+            .await
+        {
             Ok(()) => session.channel_success(channel)?,
-            Err(_) => session.channel_failure(channel)?
+            Err(_) => session.channel_failure(channel)?,
         };
         Ok(())
     }
@@ -64,11 +68,12 @@ impl Handler for AppClient {
         row_height: u32,
         _: u32,
         _: u32,
-        session: &mut Session
+        session: &mut Session,
     ) -> anyhow::Result<()> {
-        let app_channel = self.app_channel
-                              .as_ref()
-                              .context("expected `channel_open_session` to already be called")?;
+        let app_channel = self
+            .app_channel
+            .as_ref()
+            .context("expected `channel_open_session` to already be called")?;
         match app_channel.resize(col_width as u16, row_height as u16) {
             Ok(()) => session.channel_success(channel)?,
             Err(_) => session.channel_failure(channel)?,
@@ -76,21 +81,12 @@ impl Handler for AppClient {
         Ok(())
     }
 
-    async fn signal(
-        &mut self,
-        _: ChannelId,
-        signal: Sig,
-        _: &mut Session
-    ) -> anyhow::Result<()> {
+    async fn signal(&mut self, _: ChannelId, signal: Sig, _: &mut Session) -> anyhow::Result<()> {
         println!("recv sig {:?}", signal);
         Ok(())
     }
 
-    async fn channel_eof(
-        &mut self,
-        _: ChannelId,
-        _: &mut Session
-    ) -> anyhow::Result<()> {
+    async fn channel_eof(&mut self, _: ChannelId, _: &mut Session) -> anyhow::Result<()> {
         println!("eof recved");
         Ok(())
     }

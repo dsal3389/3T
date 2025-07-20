@@ -1,11 +1,11 @@
+use log::{Metadata, Record};
+use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 use std::sync::mpsc::{Sender, channel};
-use std::fs::{File, OpenOptions};
-use log::{Metadata, Record};
 
 pub(crate) struct Logger {
-    sender: Sender<String>
+    sender: Sender<String>,
 }
 
 impl Logger {
@@ -22,7 +22,7 @@ impl Logger {
 
     pub(crate) fn from_path<P>(path: P) -> std::io::Result<Self>
     where
-        P: AsRef<Path>
+        P: AsRef<Path>,
     {
         let file = OpenOptions::new()
             .create(true)
@@ -39,9 +39,10 @@ impl log::Log for Logger {
     }
 
     fn log(&self, record: &Record) {
-        self.sender.send(format!("[{}] {}", record.level(), record.args()))
+        self.sender
+            .send(format!("[{}] {}", record.level(), record.args()))
             .unwrap()
     }
 
-    fn flush(&self) { }
+    fn flush(&self) {}
 }

@@ -1,5 +1,3 @@
-
-
 pub enum AppEvent {
     Render,
     KeyPress(char),

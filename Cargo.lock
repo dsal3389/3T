@@ -219,6 +219,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bb-config"
+version = "0.1.0"
+
+[[package]]
 name = "bb-server"
 version = "0.1.0"
 dependencies = [

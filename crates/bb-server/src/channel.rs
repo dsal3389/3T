@@ -1,25 +1,25 @@
+use bb_tui::{App, AppEvent};
 use russh::ChannelId;
 use russh::server::Handle;
-use tokio::sync::mpsc::{UnboundedSender, Sender, channel};
-use bb_tui::{App, AppEvent};
+use tokio::sync::mpsc::{Sender, UnboundedSender, channel};
 
 enum AppChannelState {
     NotReady,
     Ready {
         app_event_sender: UnboundedSender<AppEvent>,
-    }
+    },
 }
 
 pub(crate) struct AppChannel {
     id: ChannelId,
-    state: AppChannelState
+    state: AppChannelState,
 }
 
 impl AppChannel {
     pub(crate) fn new(id: ChannelId) -> Self {
         Self {
             id,
-            state: AppChannelState::NotReady
+            state: AppChannelState::NotReady,
         }
     }
 
@@ -45,36 +45,40 @@ impl AppChannel {
 
         tokio::spawn(async move {
             while let Some(data) = stdout_rx.recv().await {
-                let _ = session_handle.data(channel_id, data.into()).await
+                let _ = session_handle
+                    .data(channel_id, data.into())
+                    .await
                     .inspect_err(|_| log::error!("couldn't write data to remote peer"));
             }
         });
 
-        let ssh_stdout = AppChannelWriter {
+        let channel_stdout = AppChannelStdout {
             buffer: Vec::new(),
-            sender: stdout_tx
+            sender: stdout_tx,
         };
 
-        let app = App::new(ssh_stdout)?;
+        let app = App::new(channel_stdout)?;
         let event_sender = app.event_sender();
 
         // we put the first event in the queue for resize
         // to be ready before we event start the application
-        event_sender.send(AppEvent::Resize((width, height))).unwrap();
+        event_sender
+            .send(AppEvent::Resize((width, height)))
+            .unwrap();
 
         // update the channel state to a ready state
         // and get an event sender from the application instance
         // so we can send events from the ssh connection
         self.state = AppChannelState::Ready {
-            app_event_sender: event_sender
+            app_event_sender: event_sender,
         };
 
         // spawn the application to run in the background and
         // listen for incoming events
         tokio::spawn(async move {
             app.run()
-               .await
-               .inspect_err(|err| log::error!("app run failed with error {}", err))
+                .await
+                .inspect_err(|err| log::error!("app run failed with error {}", err))
         });
         Ok(())
     }
@@ -82,23 +86,29 @@ impl AppChannel {
     /// sends resize event to the application to handle
     pub fn resize(&self, width: u16, height: u16) -> anyhow::Result<()> {
         match self.state {
-            AppChannelState::Ready { ref app_event_sender } => {
-                app_event_sender.send(AppEvent::Resize((width, height))).unwrap();
+            AppChannelState::Ready {
+                ref app_event_sender,
+            } => {
+                app_event_sender
+                    .send(AppEvent::Resize((width, height)))
+                    .unwrap();
                 Ok(())
-            },
-            AppChannelState::NotReady => Err(anyhow::anyhow!("channel is not ready, pty not created"))
+            }
+            AppChannelState::NotReady => {
+                Err(anyhow::anyhow!("channel is not ready, pty not created"))
+            }
         }
     }
 }
 
 /// a simple wrapper around a sender, the receiver will forward
 /// the written bytes to the remote channel stdout
-struct AppChannelWriter {
+struct AppChannelStdout {
     buffer: Vec<u8>,
-    sender: Sender<Vec<u8>>
+    sender: Sender<Vec<u8>>,
 }
 
-impl std::io::Write for AppChannelWriter {
+impl std::io::Write for AppChannelStdout {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.buffer.extend_from_slice(buf);
         Ok(buf.len())
