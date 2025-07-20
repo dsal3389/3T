@@ -5,6 +5,12 @@ use russh::{Channel, ChannelId, Pty, Sig};
 
 use crate::channel::AppChannel;
 
+/// represent a new client connection with a single application channel
+/// the client will create a new AppChannel when the remote requests
+/// a new session channel
+///
+/// the `AppClient` will forward the connection events to the correct
+/// channel methods for the channel to handle correctly
 #[derive(Default)]
 pub(crate) struct AppClient {
     app_channel: Option<AppChannel>,
@@ -78,16 +84,6 @@ impl Handler for AppClient {
             Ok(()) => session.channel_success(channel)?,
             Err(_) => session.channel_failure(channel)?,
         };
-        Ok(())
-    }
-
-    async fn signal(&mut self, _: ChannelId, signal: Sig, _: &mut Session) -> anyhow::Result<()> {
-        println!("recv sig {:?}", signal);
-        Ok(())
-    }
-
-    async fn channel_eof(&mut self, _: ChannelId, _: &mut Session) -> anyhow::Result<()> {
-        println!("eof recved");
         Ok(())
     }
 

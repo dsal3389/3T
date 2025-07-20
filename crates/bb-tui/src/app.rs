@@ -15,7 +15,6 @@ where
     W: Write,
 {
     event_receiver: UnboundedReceiver<AppEvent>,
-    event_sender: UnboundedSender<AppEvent>,
     terminal: Terminal<CrosstermBackend<W>>,
 }
 
@@ -23,7 +22,9 @@ impl<W> App<W>
 where
     W: Write,
 {
-    pub fn new(stdout: W) -> anyhow::Result<Self> {
+    /// creates a new application instance and will return the app event sender
+    /// to the caller so he can send calls from outside into the application
+    pub fn new(stdout: W) -> anyhow::Result<(Self, UnboundedSender<AppEvent>)> {
         let (event_sender, event_receiver) = unbounded_channel();
         let terminal = {
             let backend = CrosstermBackend::new(stdout);
@@ -33,18 +34,15 @@ where
             Terminal::with_options(backend, options)
         }?;
 
-        Ok(App {
-            event_sender,
+        let app = App {
             event_receiver,
             terminal,
-        })
+        };
+        Ok((app, event_sender))
     }
 
-    #[inline]
-    pub fn event_sender(&self) -> UnboundedSender<AppEvent> {
-        self.event_sender.clone()
-    }
-
+    /// will start to run the application instance main loop, read application
+    /// events and act accordily
     pub async fn run(mut self) -> anyhow::Result<()> {
         while let Some(event) = self.event_receiver.recv().await {
             match event {

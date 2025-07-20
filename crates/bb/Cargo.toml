@@ -9,5 +9,3 @@ tokio.workspace = true
 clap.workspace = true
 log.workspace = true
 bb-server = { version = "0.1.0", path = "../bb-server" }
-
-

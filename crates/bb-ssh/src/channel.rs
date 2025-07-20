@@ -1,8 +1,12 @@
-use bb_tui::{App, AppEvent};
 use russh::ChannelId;
 use russh::server::Handle;
 use tokio::sync::mpsc::{Sender, UnboundedSender, channel};
 
+use bb_tui::{App, AppEvent};
+
+/// defines the state of the `AppChannel`, if it is ready or not,
+/// the channel is ready when there is an `App` instance running for the
+/// connection and we have the `app_event_sender` to send events to the app
 enum AppChannelState {
     NotReady,
     Ready {
@@ -10,6 +14,10 @@ enum AppChannelState {
     },
 }
 
+/// represents an open `AppChannel` that belongs to
+/// a single client connection, the channel is the one who is
+/// running the application instance and will forward the required
+/// events to the application based on the `AppClient` method calls
 pub(crate) struct AppChannel {
     id: ChannelId,
     state: AppChannelState,
@@ -23,23 +31,18 @@ impl AppChannel {
         }
     }
 
-    /// returns a boolean value indicating if the app channel
-    /// is ready and data can be sent to/from it
-    #[inline]
-    pub fn is_ready(&self) -> bool {
-        !matches!(self.state, AppChannelState::NotReady)
-    }
-
     pub async fn create_pty(
         &mut self,
         session_handle: Handle,
         width: u16,
         height: u16,
     ) -> anyhow::Result<()> {
-        if self.is_ready() {
+        if matches!(self.state, AppChannelState::Ready { .. }) {
             anyhow::bail!("cannot create more then 1 pty per channel");
         }
 
+        // stdout channel will forward traffic from the application
+        // to the remote client stdout
         let (stdout_tx, mut stdout_rx) = channel::<Vec<u8>>(1);
         let channel_id = self.id.clone();
 
@@ -57,8 +60,7 @@ impl AppChannel {
             sender: stdout_tx,
         };
 
-        let app = App::new(channel_stdout)?;
-        let event_sender = app.event_sender();
+        let (app, event_sender) = App::new(channel_stdout)?;
 
         // we put the first event in the queue for resize
         // to be ready before we event start the application
@@ -83,7 +85,8 @@ impl AppChannel {
         Ok(())
     }
 
-    /// sends resize event to the application to handle
+    /// sends resize event to the application to calculate and render
+    /// the new frames with the new given dem
     pub fn resize(&self, width: u16, height: u16) -> anyhow::Result<()> {
         match self.state {
             AppChannelState::Ready {
