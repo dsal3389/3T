@@ -3,12 +3,12 @@ use std::io::Write;
 use ratatui::Viewport;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
-use ratatui::widgets::{Block, Paragraph};
 use ratatui::{Terminal, TerminalOptions};
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::events::AppEvent;
+use crate::views::{AppView, AuthView, View};
 
 pub struct App<W>
 where
@@ -16,6 +16,7 @@ where
 {
     event_receiver: UnboundedReceiver<AppEvent>,
     terminal: Terminal<CrosstermBackend<W>>,
+    view: AppView,
 }
 
 impl<W> App<W>
@@ -37,6 +38,7 @@ where
         let app = App {
             event_receiver,
             terminal,
+            view: AppView::Auth(AuthView::default()),
         };
         Ok((app, event_sender))
     }
@@ -60,6 +62,10 @@ where
                     // the eventloop to comeback to use to handle that event
                     self.render()?;
                 }
+                AppEvent::KeyPress(key) => {
+                    // TODO: forward the keypress to the services
+                    let _ = self.view.handle_keypress(key).await;
+                }
                 _ => unimplemented!(),
             }
         }
@@ -68,9 +74,7 @@ where
 
     fn render(&mut self) -> anyhow::Result<()> {
         self.terminal.draw(|frame| {
-            let block = Block::bordered();
-            let p = Paragraph::new("hello world").block(block);
-            frame.render_widget(p, frame.area());
+            frame.render_widget(&self.view, frame.area());
         })?;
         Ok(())
     }

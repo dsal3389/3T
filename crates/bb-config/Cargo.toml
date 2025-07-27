@@ -1,6 +1,0 @@
-[package]
-name = "bb-config"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]

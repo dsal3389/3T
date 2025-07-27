@@ -1,3 +1,4 @@
+use anyhow::Context;
 use russh::ChannelId;
 use russh::server::Handle;
 use tokio::sync::mpsc::{Sender, UnboundedSender, channel};
@@ -18,13 +19,13 @@ enum AppChannelState {
 /// a single client connection, the channel is the one who is
 /// running the application instance and will forward the required
 /// events to the application based on the `AppClient` method calls
-pub(crate) struct AppChannel {
+pub struct AppChannel {
     id: ChannelId,
     state: AppChannelState,
 }
 
 impl AppChannel {
-    pub(crate) fn new(id: ChannelId) -> Self {
+    pub fn new(id: ChannelId) -> Self {
         Self {
             id,
             state: AppChannelState::NotReady,
@@ -88,19 +89,34 @@ impl AppChannel {
     /// sends resize event to the application to calculate and render
     /// the new frames with the new given dem
     pub fn resize(&self, width: u16, height: u16) -> anyhow::Result<()> {
-        match self.state {
-            AppChannelState::Ready {
-                ref app_event_sender,
-            } => {
-                app_event_sender
-                    .send(AppEvent::Resize((width, height)))
-                    .unwrap();
-                Ok(())
-            }
-            AppChannelState::NotReady => {
-                Err(anyhow::anyhow!("channel is not ready, pty not created"))
-            }
+        let AppChannelState::Ready {
+            ref app_event_sender,
+        } = self.state
+        else {
+            anyhow::bail!("channel is not ready, pty not created");
+        };
+
+        app_event_sender
+            .send(AppEvent::Resize((width, height)))
+            .unwrap();
+        Ok(())
+    }
+
+    pub async fn stdin(&self, data: &[u8]) -> anyhow::Result<()> {
+        let AppChannelState::Ready {
+            ref app_event_sender,
+        } = self.state
+        else {
+            anyhow::bail!("channel is not ready, pty not created");
+        };
+
+        for c in String::from_utf8(data.into())
+            .context("invalid utf8 characters recieved")?
+            .chars()
+        {
+            app_event_sender.send(AppEvent::KeyPress(c)).unwrap();
         }
+        Ok(())
     }
 }
 

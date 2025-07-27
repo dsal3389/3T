@@ -1,10 +1,11 @@
-use russh::server::Server;
 use std::net::SocketAddr;
 
-use crate::client::AppClient;
+use russh::server::Server;
+
+use crate::ssh::AppClient;
 
 #[derive(Default)]
-pub(crate) struct AppServer {}
+pub struct AppServer {}
 
 impl Server for AppServer {
     type Handler = AppClient;

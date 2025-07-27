@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use tokio::runtime::Builder;
 use clap::Parser;
+use tokio::runtime::Builder;
 
 mod logger;
 
@@ -29,8 +29,7 @@ where
     P: AsRef<Path>,
 {
     let logger = logger::Logger::from_path(path)?;
-    log::set_boxed_logger(Box::new(logger))
-        .map(|()| log::set_max_level(log::LevelFilter::Info))?;
+    log::set_boxed_logger(Box::new(logger)).map(|()| log::set_max_level(log::LevelFilter::Info))?;
     Ok(())
 }
 
