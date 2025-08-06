@@ -35,11 +35,11 @@ where
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    setup_logger(args.log.unwrap_or("bb.log".into()))?;
+    setup_logger(args.log.unwrap_or("threet.log".into()))?;
 
     let runtime = Builder::new_multi_thread()
         .worker_threads(args.threads)
-        .thread_name("bb-tokio-worker-thread")
+        .thread_name("3T-tokio-worker-thread")
         // lower the event interval just a tad because chatting users
         // may not always be active, so it is better to be responsive more to the
         // active users
@@ -47,5 +47,5 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()
         .unwrap();
-    runtime.block_on(bb_server::main(args.address))
+    runtime.block_on(threet_server::main(args.address))
 }

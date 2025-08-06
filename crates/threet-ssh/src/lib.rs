@@ -4,10 +4,18 @@ use std::sync::Arc;
 
 use rand::rngs::OsRng;
 use russh::keys::PrivateKey;
-use russh::server::{Config, Server};
+use russh::server::{Config, Server as _};
+use tokio::sync::mpsc::Receiver;
 
+mod client;
+mod events;
 mod server;
-mod ssh;
+
+pub use client::ClientChannel;
+pub use events::{ClientEvent, ServerEvent};
+
+pub type ChannelReceiver = Receiver<ClientEvent>;
+pub type ServerReceiver = Receiver<ServerEvent>;
 
 /// loads the ssh server private keys from the given path, if coudln't
 /// find a private file at the given path, will create one and save
@@ -27,15 +35,16 @@ where
     Ok(key)
 }
 
-pub async fn main(address: SocketAddr) -> anyhow::Result<()> {
+pub async fn run_server(addr: SocketAddr) -> anyhow::Result<ServerReceiver> {
     let private_key = load_server_private_key("./key.pem")?;
     let config = Arc::new(Config {
         keys: vec![private_key],
         ..Config::default()
     });
+    let (mut server, events) = server::Server::new();
 
-    server::AppServer::default()
-        .run_on_address(config, address)
-        .await?;
-    Ok(())
+    tokio::spawn(async move {
+        let _ = server.run_on_address(config, addr).await;
+    });
+    Ok(events)
 }

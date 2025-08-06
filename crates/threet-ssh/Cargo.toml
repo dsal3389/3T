@@ -1,10 +1,13 @@
 [package]
-name = "bb-tui"
+name = "threet-ssh"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+base64ct = "1.6.0"
+futures.workspace = true
 log.workspace = true
-ratatui = "0.29.0"
+rand = "0.8.5"
+russh = "0.53.0"
 tokio.workspace = true

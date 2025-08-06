@@ -1,5 +1,5 @@
 [package]
-name = "bb"
+name = "threet"
 version.workspace = true
 edition.workspace = true
 
@@ -8,4 +8,4 @@ anyhow.workspace = true
 tokio.workspace = true
 clap.workspace = true
 log.workspace = true
-bb-server = { version = "0.1.0", path = "../bb-server" }
+threet-server = { version = "0.1.0", path = "../threet-server" }
