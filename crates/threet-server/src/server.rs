@@ -1,27 +1,23 @@
 use std::net::SocketAddr;
 
+use russh::server::Server as SshServerTrait;
+use threet_storage::Database;
+
 use crate::client::Client;
 
-pub struct AppServer {}
+pub struct Server {
+    database: Database,
+}
 
-impl AppServer {
-    pub fn new() -> Self {
-        Self {}
+impl Server {
+    pub fn new(database: Database) -> Self {
+        Self { database }
     }
+}
 
-    pub async fn run(&mut self, addr: SocketAddr) -> anyhow::Result<()> {
-        let mut ssh_events = threet_ssh::run_server(addr).await?;
-
-        // start the ssh server and wait for incoming channel events
-        // for each new channel a server client is created
-        while let Some(event) = ssh_events.recv().await {
-            match event {
-                threet_ssh::ServerEvent::Channel((channel_events, channel)) => {
-                    let client = Client::new(channel_events, channel);
-                    log::info!("client connected");
-                }
-            }
-        }
-        Ok(())
+impl SshServerTrait for Server {
+    type Handler = Client;
+    fn new_client(&mut self, peer: Option<SocketAddr>) -> Self::Handler {
+        Self::Handler::new(peer.unwrap())
     }
 }

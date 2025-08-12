@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS Channel (
+    id INTEGER PRIMARY KEY,
+    name TEXT
+);

@@ -6,9 +6,10 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace = true
 base64ct = "1.6.0"
+futures.workspace = true
 log.workspace = true
 rand = "0.8.5"
-rusqlite = "0.37.0"
 russh = "0.53.0"
-threet-ssh = { version = "0.1.0", path = "../threet-ssh" }
+threet-storage = { version = "0.1.0", path = "../threet-storage" }
+threet-tui = { version = "0.1.0", path = "../threet-tui" }
 tokio.workspace = true

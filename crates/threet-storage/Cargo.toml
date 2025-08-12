@@ -1,0 +1,9 @@
+[package]
+name = "threet-storage"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-sqlite = "0.5.3"
+rusqlite = "0.37.0"

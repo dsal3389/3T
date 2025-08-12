@@ -22,6 +22,9 @@ struct Args {
     /// by default use the CWD/bb.log
     #[arg(long)]
     log: Option<PathBuf>,
+
+    #[arg(long, default_value_t = String::from("./threet.sqlite"))]
+    database: String,
 }
 
 fn setup_logger<P>(path: P) -> anyhow::Result<()>
@@ -47,5 +50,9 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()
         .unwrap();
-    runtime.block_on(threet_server::main(args.address))
+    runtime.block_on(threet_server::main(
+        args.address,
+        args.database,
+        args.threads,
+    ))
 }
