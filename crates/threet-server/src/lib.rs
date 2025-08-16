@@ -46,7 +46,7 @@ pub async fn main(
     });
 
     // here just for testings
-    let channels = threet_storage::Channel::load_all(database.handler())
+    let channels = threet_storage::models::Channel::load_all(database.handler())
         .await
         .expect("couldn't get channels");
     println!("channels {:?}", channels);

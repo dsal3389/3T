@@ -3,23 +3,20 @@ use std::path::{Path, PathBuf};
 use async_sqlite::{JournalMode, Pool, PoolBuilder};
 use rusqlite::Row;
 
-mod channel;
+pub mod models;
 
-pub use channel::Channel;
+use models::Model;
 
 const database_schema: &str = include_str!("../schema.sql");
 
-pub(crate) trait DatabaseEntry: Sized + Send {
-    /// returns the table name for current item
-    fn table_name() -> &'static str;
-
-    /// returns the querable fields for the current item
-    fn fields() -> Vec<String>;
-
+/// implemented on types that can be created
+/// from a database row, usually types that implement
+/// this triat are models
+trait FromRow: Sized {
     fn from_row(row: &Row) -> rusqlite::Result<Self>;
 }
 
-fn preper_select_statement_string<T: DatabaseEntry>() -> String {
+fn preper_select_statement_string<T: Model>() -> String {
     let fields = T::fields().join(",");
     format!("SELECT {} from {}", fields, T::table_name())
 }
@@ -47,7 +44,9 @@ pub struct DatabaseHandler {
 }
 
 impl DatabaseHandler {
-    pub(crate) async fn fetch_entries<T: DatabaseEntry + 'static>(self) -> anyhow::Result<Vec<T>> {
+    pub(crate) async fn fetch_entries<T: Model + FromRow + 'static>(
+        self,
+    ) -> anyhow::Result<Vec<T>> {
         let entries = self
             .pool
             .conn(|conn| {
@@ -90,7 +89,7 @@ impl DatabaseBuilder {
             .open()
             .await
             .expect("couldn't connect to database");
-        pool.conn(|conn| conn.execute(database_schema, []))
+        pool.conn(|conn| conn.execute_batch(database_schema))
             .await
             .expect("problem executing database schema");
         Database::new(pool)
