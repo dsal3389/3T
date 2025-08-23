@@ -1,15 +1,17 @@
 use std::io::Write;
 
 use ratatui::prelude::*;
-use ratatui::widgets::Block;
 use ratatui::{TerminalOptions, Viewport};
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::Event;
+use crate::views::{AppView, AuthenticateView, View};
+use crate::widgets::StatusWidget;
 
 pub struct App<W: Write> {
     terminal: Terminal<CrosstermBackend<W>>,
     events: Receiver<Event>,
+    view: AppView,
 }
 
 impl<W: Write> App<W> {
@@ -25,9 +27,11 @@ impl<W: Write> App<W> {
             },
         )
         .unwrap();
+        let view = AuthenticateView::default();
         let app = App {
             terminal,
             events: app_rx,
+            view: AppView::Authenticate(view),
         };
         (app, app_tx)
     }
@@ -45,6 +49,19 @@ impl<W: Write> App<W> {
                         .unwrap();
                     self.render();
                 }
+                Event::Stdin(data) => {
+                    let stdin = match String::from_utf8(data) {
+                        Ok(string) => string,
+                        Err(err) => {
+                            log::warn!("warning converting to utf-8 {}", err);
+                            continue;
+                        }
+                    };
+                    for c in stdin.chars() {
+                        self.view.handle_key(c).await;
+                    }
+                    self.render();
+                }
                 _ => {}
             };
         }
@@ -54,7 +71,15 @@ impl<W: Write> App<W> {
     fn render(&mut self) {
         self.terminal
             .draw(|frame| {
-                frame.render_widget(Block::bordered(), frame.area());
+                let [view_area, status_area] =
+                    Layout::vertical([Constraint::Fill(1), Constraint::Length(1)])
+                        .areas(frame.area());
+
+                frame.render_widget(&self.view, view_area);
+                frame.render_widget(
+                    StatusWidget::new(self.view.name(), self.view.mode()),
+                    status_area,
+                );
             })
             .unwrap();
     }
