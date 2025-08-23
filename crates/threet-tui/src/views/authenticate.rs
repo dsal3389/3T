@@ -2,25 +2,24 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Padding};
 
+use crate::utils::get_middle_area;
 use crate::widgets::{Field, FieldKind};
 
 use super::{View, ViewMode};
 
 #[derive(Default)]
-enum FocuseField {
+enum Focuse {
     #[default]
-    Username,
-    Password,
+    UsernameField,
+    PasswordField,
 }
 
-impl Iterator for FocuseField {
-    type Item = FocuseField;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if matches!(self, FocuseField::Username) {
-            Some(FocuseField::Password)
+impl Focuse {
+    fn next(&self) -> Self {
+        if matches!(self, Focuse::UsernameField) {
+            Focuse::PasswordField
         } else {
-            Some(FocuseField::Username)
+            Focuse::UsernameField
         }
     }
 }
@@ -28,27 +27,41 @@ impl Iterator for FocuseField {
 pub struct AuthenticateView {
     username: Field,
     password: Field,
-    focuse: FocuseField,
+    focuse: Focuse,
     mode: ViewMode,
 }
 
 impl View for AuthenticateView {
     async fn handle_key(&mut self, key: char) {
         println!("key is {:x}", key as u32);
-        match key {
-            '\t' => {
-                self.focuse = self.focuse.next().unwrap();
-            }
-            _ => match self.focuse {
-                FocuseField::Username => self.username.push_char(key),
-                FocuseField::Password => self.password.push_char(key),
+        match self.mode {
+            ViewMode::Normal => match key {
+                '\t' | 'j' | 'k' => {
+                    self.focuse = self.focuse.next();
+                }
+                'i' | 'a' => {
+                    self.mode = ViewMode::Insert;
+                }
+                _ => {}
             },
+            ViewMode::Insert => {
+                // if the key is ESC key
+                if key as u32 == 0x1b {
+                    self.mode = ViewMode::Normal;
+                    return;
+                }
+
+                match self.focuse {
+                    Focuse::UsernameField => self.username.push_char(key),
+                    Focuse::PasswordField => self.password.push_char(key),
+                }
+            }
         }
     }
 
     #[inline]
     fn name(&self) -> &str {
-        " Authentication "
+        "Authentication"
     }
 
     #[inline]
@@ -57,33 +70,38 @@ impl View for AuthenticateView {
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        let [_, middle, _] = Layout::horizontal([
-            Constraint::Fill(1),
-            Constraint::Max(60),
-            Constraint::Fill(1),
-        ])
-        .areas(area);
-        let [_, middle, _] = Layout::vertical([
-            Constraint::Fill(1),
-            Constraint::Length(10),
-            Constraint::Fill(1),
-        ])
-        .areas(middle);
-
+        let middle = get_middle_area((60, 10), area);
         let container = Block::bordered()
-            .title("Authenticate")
-            .padding(Padding::symmetric(2, 1));
+            .padding(Padding::symmetric(2, 1))
+            .title("Authenticate");
         let [username_area, password_area] =
             Layout::vertical([Constraint::Length(3); 2]).areas(container.inner(middle));
 
         container.render(middle, buf);
+
+        let [username_block, password_block] = if matches!(self.focuse, Focuse::UsernameField) {
+            [
+                Block::bordered()
+                    .padding(Padding::left(1))
+                    .style(Style::new().yellow()),
+                Block::bordered().padding(Padding::left(1)),
+            ]
+        } else {
+            [
+                Block::bordered().padding(Padding::left(1)),
+                Block::bordered()
+                    .padding(Padding::left(1))
+                    .style(Style::new().yellow()),
+            ]
+        };
+
         self.username
             .widget()
-            .block(Block::bordered())
+            .block(username_block)
             .render(username_area, buf);
         self.password
             .widget()
-            .block(Block::bordered())
+            .block(password_block)
             .render(password_area, buf);
     }
 }
@@ -96,7 +114,7 @@ impl Default for AuthenticateView {
             username,
             password,
             mode: ViewMode::default(),
-            focuse: FocuseField::default(),
+            focuse: Focuse::default(),
         }
     }
 }

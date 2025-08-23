@@ -17,7 +17,8 @@ pub trait View {
     /// the view name
     fn name(&self) -> &str;
 
-    /// view report what mod its currently in
+    /// view report what mod its currently in, the view is the type that controlls the
+    /// mode at the time, since there is always only 1 view
     fn mode(&self) -> ViewMode;
 
     /// called when ratatui wants to render the view, the reason the trait is not bounded
