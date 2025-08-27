@@ -1,16 +1,24 @@
 use std::io::Write;
+use std::sync::Arc;
+use std::time::Duration;
 
 use ratatui::prelude::*;
 use ratatui::{TerminalOptions, Viewport};
+use threet_storage::models::User;
+
+use tokio::sync::Mutex;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
+use tokio::time::{MissedTickBehavior, interval};
 
 use crate::Event;
-use crate::views::{AppView, AuthenticateView, View};
+use crate::views::{AppView, AuthenticateView, View, ViewKind};
 use crate::widgets::StatusWidget;
 
 pub struct App<W: Write> {
-    terminal: Terminal<CrosstermBackend<W>>,
     events: Receiver<Event>,
+    events_sender: Sender<Event>,
+    terminal: Terminal<CrosstermBackend<W>>,
+    user: Option<User>,
     view: AppView,
 }
 
@@ -27,21 +35,54 @@ impl<W: Write> App<W> {
             },
         )
         .unwrap();
-        let view = AuthenticateView::default();
+        let view = AuthenticateView::new(app_tx.clone());
         let app = App {
             terminal,
             events: app_rx,
+            events_sender: app_tx.clone(),
             view: AppView::Authenticate(view),
+            user: None,
         };
         (app, app_tx)
     }
 
     pub async fn run(mut self) -> anyhow::Result<()> {
-        // initial application render
+        // initial unconditiond application render
         self.render();
+
+        // disgusting naming, but I just want to make it work for now
+        let tick_consumed = Arc::new(Mutex::new(true));
+        let tick_consumed2 = tick_consumed.clone();
+
+        let app_tx = self.events_sender.clone();
+
+        tokio::spawn(async move {
+            let mut interval_ = interval(Duration::from_millis(350));
+            interval_.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+            // FIXME!: need to kill that loop when app instance
+            // is dropped!!!
+            loop {
+                interval_.tick().await;
+
+                let mut is_tick_consumed = tick_consumed2.lock().await;
+
+                if *is_tick_consumed {
+                    // FIXME: this will break if the app drop
+                    app_tx.send(Event::Tick).await.unwrap();
+                    *is_tick_consumed = false;
+                }
+            }
+        });
 
         while let Some(event) = self.events.recv().await {
             match event {
+                Event::Tick => {
+                    self.view.on_tick().await;
+
+                    let mut tick_consumed = tick_consumed.lock().await;
+                    *tick_consumed = true;
+                }
                 Event::Render => self.render(),
                 Event::Resize((width, height)) => {
                     self.terminal
@@ -57,11 +98,16 @@ impl<W: Write> App<W> {
                             continue;
                         }
                     };
+
+                    // we iterate over each char because the view
+                    // needs to handle each character separatly
                     for c in stdin.chars() {
                         self.view.handle_key(c).await;
                     }
                     self.render();
                 }
+                Event::SetView(view_kind) => self.set_view(view_kind),
+                Event::SetUser(user) => self.user = Some(user),
                 _ => {}
             };
         }
@@ -82,5 +128,13 @@ impl<W: Write> App<W> {
                 );
             })
             .unwrap();
+    }
+
+    fn set_view(&mut self, view_kind: ViewKind) {
+        match view_kind {
+            AuthenticateView => {
+                todo!()
+            }
+        }
     }
 }

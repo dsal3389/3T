@@ -5,7 +5,7 @@ use std::sync::Arc;
 use rand::rngs::OsRng;
 use russh::keys::PrivateKey;
 use russh::server::{Config, Server as _};
-use threet_storage::DatabaseBuilder;
+use threet_storage::{DatabaseBuilder, set_database};
 
 mod channel;
 mod client;
@@ -39,20 +39,15 @@ pub async fn main(
         .path(database_path)
         .build()
         .await;
+
+    set_database(database);
+
     let private_key = load_server_private_key("./key.pem")?;
     let config = Arc::new(Config {
         keys: vec![private_key],
         ..Config::default()
     });
 
-    // here just for testings
-    let channels = threet_storage::models::Channel::load_all(database.handler())
-        .await
-        .expect("couldn't get channels");
-    println!("channels {:?}", channels);
-
-    server::Server::new(database)
-        .run_on_address(config, addr)
-        .await?;
+    server::Server::new().run_on_address(config, addr).await?;
     Ok(())
 }

@@ -1,7 +1,5 @@
-use rusqlite::Row;
-
 use super::Model;
-use crate::{DatabaseHandler, FromRow};
+use crate::FromRow;
 
 #[derive(Debug)]
 pub struct Channel {
@@ -9,14 +7,8 @@ pub struct Channel {
     name: String,
 }
 
-impl Channel {
-    pub async fn load_all(handler: DatabaseHandler) -> anyhow::Result<Vec<Channel>> {
-        handler.fetch_entries().await
-    }
-}
-
 impl FromRow for Channel {
-    fn from_row(row: &Row) -> rusqlite::Result<Self> {
+    fn from_row(row: &rusqlite::Row) -> rusqlite::Result<Self> {
         let id = row.get("id")?;
         let name = row.get("name")?;
         Ok(Channel { id, name })

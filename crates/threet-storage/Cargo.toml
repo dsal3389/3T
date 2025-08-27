@@ -6,4 +6,7 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace = true
 async-sqlite = "0.5.3"
+log.workspace = true
 rusqlite = "0.37.0"
+sha2 = "0.10.9"
+tokio.workspace = true

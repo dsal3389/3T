@@ -1,17 +1,14 @@
 use std::net::SocketAddr;
 
 use russh::server::Server as SshServerTrait;
-use threet_storage::Database;
 
 use crate::client::Client;
 
-pub struct Server {
-    database: Database,
-}
+pub struct Server {}
 
 impl Server {
-    pub fn new(database: Database) -> Self {
-        Self { database }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 

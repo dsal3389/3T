@@ -7,4 +7,5 @@ edition.workspace = true
 anyhow.workspace = true
 log.workspace = true
 ratatui = "0.29.0"
+threet-storage = { version = "0.1.0", path = "../threet-storage" }
 tokio.workspace = true

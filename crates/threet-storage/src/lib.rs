@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use async_sqlite::{JournalMode, Pool, PoolBuilder};
 use rusqlite::Row;
@@ -8,6 +9,9 @@ pub mod models;
 use models::Model;
 
 const database_schema: &str = include_str!("../schema.sql");
+
+/// stores the global database instance so everyone can access it
+static DATABASE: OnceLock<Database> = OnceLock::new();
 
 /// implemented on types that can be created
 /// from a database row, usually types that implement
@@ -21,6 +25,20 @@ fn preper_select_statement_string<T: Model>() -> String {
     format!("SELECT {} from {}", fields, T::table_name())
 }
 
+pub fn set_database(db: Database) {
+    DATABASE
+        .set(db)
+        .expect("couldn't set global database instance");
+}
+
+pub fn get_database() -> Database {
+    DATABASE
+        .get()
+        .expect("couldn't get global database instance")
+        .clone()
+}
+
+#[derive(Clone)]
 pub struct Database {
     pool: Pool,
 }
@@ -29,35 +47,11 @@ impl Database {
     fn new(pool: Pool) -> Self {
         Self { pool }
     }
-
-    /// returns a database handler that can execute
-    /// sql queries
-    pub fn handler(&self) -> DatabaseHandler {
-        DatabaseHandler {
-            pool: self.pool.clone(),
-        }
-    }
 }
 
-pub struct DatabaseHandler {
-    pool: Pool,
-}
-
-impl DatabaseHandler {
-    pub(crate) async fn fetch_entries<T: Model + FromRow + 'static>(
-        self,
-    ) -> anyhow::Result<Vec<T>> {
-        let entries = self
-            .pool
-            .conn(|conn| {
-                let stmt = preper_select_statement_string::<T>();
-                let mut stmt = conn.prepare(&stmt)?;
-
-                stmt.query_map([], |row| T::from_row(row))?
-                    .collect::<rusqlite::Result<Vec<T>>>()
-            })
-            .await?;
-        Ok(entries)
+impl std::fmt::Debug for Database {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Database")
     }
 }
 
