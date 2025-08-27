@@ -65,7 +65,6 @@ impl ClientChannel {
             anyhow::bail!("no application was created for this channel, request a pty")
         };
         let event = Event::Stdin(data.to_vec());
-
         app_tx.send(event).await.unwrap();
         Ok(())
     }
@@ -84,17 +83,19 @@ impl Write for ChannelStdout {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        let bytes = self.buffer.clone();
-        let handler = self.session_handle.clone();
-        let channel_id = self.channel_id.clone();
+        tokio::spawn({
+            let buffer = self.buffer.clone();
+            let handler = self.session_handle.clone();
+            let channel_id = self.channel_id.clone();
 
-        tokio::spawn(async move {
-            let _ = handler
-                .data(channel_id, bytes.into())
-                .await
-                .inspect_err(|err| {
-                    log::warn!("problem sending stdout data to remote client, {:?}", err)
-                });
+            async move {
+                let _ = handler
+                    .data(channel_id, buffer.into())
+                    .await
+                    .inspect_err(|err| {
+                        log::warn!("problem sending stdout data to remote client, {:?}", err)
+                    });
+            }
         });
 
         self.buffer.clear();

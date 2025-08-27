@@ -1,7 +1,9 @@
 use anyhow::Context;
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::Constraint;
+use ratatui::layout::Layout;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Padding};
+use ratatui::widgets::Block;
+use ratatui::widgets::Padding;
 use tokio::sync::mpsc::Sender;
 
 use threet_storage::get_database;
@@ -9,70 +11,85 @@ use threet_storage::models::User;
 
 use crate::Event;
 use crate::utils::get_middle_area;
-use crate::widgets::{Field, FieldKind};
+use crate::widgets::Button;
+use crate::widgets::Field;
+use crate::widgets::FieldBuilder;
+use crate::widgets::FieldKind;
 
-use super::{Focuse, FocuseIterator, View, ViewMode};
+use super::Focuse;
+use super::FocuseIterator;
+use super::View;
+use super::ViewMode;
 
 #[derive(Default, Clone)]
-enum FocuseKind {
+enum FocuseArea {
     #[default]
     UsernameField,
     PasswordField,
     AuthenticateButton,
 }
 
-impl FocuseKind {
+impl FocuseArea {
     #[inline]
     fn is_username_field(&self) -> bool {
-        matches!(self, FocuseKind::UsernameField)
+        matches!(self, FocuseArea::UsernameField)
     }
 
     #[inline]
     fn is_password_field(&self) -> bool {
-        matches!(self, FocuseKind::PasswordField)
+        matches!(self, FocuseArea::PasswordField)
     }
 
     #[inline]
     fn is_authenticate_button(&self) -> bool {
-        matches!(self, FocuseKind::AuthenticateButton)
+        matches!(self, FocuseArea::AuthenticateButton)
     }
 }
 
-impl FocuseIterator for FocuseKind {
+impl FocuseIterator for FocuseArea {
     fn previous(&mut self) -> Self {
         match self {
-            FocuseKind::AuthenticateButton => FocuseKind::PasswordField,
-            FocuseKind::PasswordField => FocuseKind::UsernameField,
-            FocuseKind::UsernameField => FocuseKind::AuthenticateButton,
+            FocuseArea::AuthenticateButton => FocuseArea::PasswordField,
+            FocuseArea::PasswordField => FocuseArea::UsernameField,
+            FocuseArea::UsernameField => FocuseArea::AuthenticateButton,
         }
     }
 
     fn next(&mut self) -> Self {
         match self {
-            FocuseKind::UsernameField => FocuseKind::PasswordField,
-            FocuseKind::PasswordField => FocuseKind::AuthenticateButton,
-            FocuseKind::AuthenticateButton => FocuseKind::UsernameField,
+            FocuseArea::UsernameField => FocuseArea::PasswordField,
+            FocuseArea::PasswordField => FocuseArea::AuthenticateButton,
+            FocuseArea::AuthenticateButton => FocuseArea::UsernameField,
         }
     }
 }
 
 pub struct AuthenticateView {
     app_tx: Sender<Event>,
-    focuse: Focuse<FocuseKind>,
+    focuse: Focuse<FocuseArea>,
     mode: ViewMode,
 
     username: Field,
     password: Field,
+    auth_btn: Button,
 }
 
 impl AuthenticateView {
     pub fn new(app_tx: Sender<Event>) -> Self {
-        let username = Field::new(FieldKind::String, Some(String::from("username...")));
-        let password = Field::new(FieldKind::Secret, Some(String::from("password...")));
+        let username = FieldBuilder::default()
+            .kind(FieldKind::String)
+            .placeholder("username...".to_string())
+            .build();
+        let password = FieldBuilder::default()
+            .kind(FieldKind::Secret)
+            .placeholder("password...".to_string())
+            .build();
+
         AuthenticateView {
             app_tx,
             username,
             password,
+            auth_btn: Button::new("LOGIN".to_string(), false),
             mode: ViewMode::default(),
             focuse: Focuse::default(),
         }
@@ -100,35 +117,41 @@ impl View for AuthenticateView {
         println!("tick")
     }
 
-    async fn handle_key(&mut self, key: char) {
-        println!("key is {:x}", key as u32);
+    async fn handle_key(&mut self, key: char) -> bool {
+        // most of the actions in the view require rerendering, so
+        // it will be easier to start with a truthy value
+        let mut should_rerender = true;
+
         match self.mode {
             ViewMode::Normal => match key {
-                '\t' | 'j' | 'k' => {
-                    self.focuse.next();
-                }
+                'k' => self.focuse.previous(),
+                '\t' | 'j' => self.focuse.next(),
                 'i' | 'a' => {
                     self.mode = ViewMode::Insert;
                 }
                 ' ' | '\n' if self.focuse.is_authenticate_button() => {
                     todo!()
                 }
-                _ => {}
+                _ => {
+                    should_rerender = false;
+                }
             },
             ViewMode::Insert => {
                 // if the key is ESC key
                 if key as u32 == 0x1b {
                     self.mode = ViewMode::Normal;
-                    return;
-                }
-
-                match self.focuse.current() {
-                    FocuseKind::UsernameField => self.username.push_char(key),
-                    FocuseKind::PasswordField => self.password.push_char(key),
-                    _ => {}
+                } else {
+                    match self.focuse.current() {
+                        FocuseArea::UsernameField => self.username.push_char(key),
+                        FocuseArea::PasswordField => self.password.push_char(key),
+                        _ => {
+                            should_rerender = false;
+                        }
+                    }
                 }
             }
-        }
+        };
+        should_rerender
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
@@ -136,34 +159,30 @@ impl View for AuthenticateView {
         let container = Block::bordered()
             .padding(Padding::symmetric(2, 1))
             .title("Authenticate");
-        let [username_area, password_area] =
-            Layout::vertical([Constraint::Length(3); 2]).areas(container.inner(middle));
+        let [username_area, password_area, btn_area] =
+            Layout::vertical([Constraint::Length(3); 3]).areas(container.inner(middle));
 
         container.render(middle, buf);
 
-        let [username_block, password_block] = if self.focuse.is_username_field() {
-            [
-                Block::bordered()
-                    .padding(Padding::left(1))
-                    .style(Style::new().yellow()),
-                Block::bordered().padding(Padding::left(1)),
-            ]
-        } else {
-            [
-                Block::bordered().padding(Padding::left(1)),
-                Block::bordered()
-                    .padding(Padding::left(1))
-                    .style(Style::new().yellow()),
-            ]
+        let (username_widget, password_widget, btn_widget) = match self.focuse.current() {
+            FocuseArea::UsernameField => (
+                self.username.widget().focused(),
+                self.password.widget(),
+                self.auth_btn.widget(),
+            ),
+            FocuseArea::PasswordField => (
+                self.username.widget(),
+                self.password.widget().focused(),
+                self.auth_btn.widget(),
+            ),
+            FocuseArea::AuthenticateButton => (
+                self.username.widget(),
+                self.password.widget(),
+                self.auth_btn.widget().focused(),
+            ),
         };
-
-        self.username
-            .widget()
-            .block(username_block)
-            .render(username_area, buf);
-        self.password
-            .widget()
-            .block(password_block)
-            .render(password_area, buf);
+        username_widget.render(username_area, buf);
+        password_widget.render(password_area, buf);
+        btn_widget.render(btn_area, buf);
     }
 }

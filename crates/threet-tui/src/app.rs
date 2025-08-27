@@ -2,16 +2,23 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
+use ratatui::TerminalOptions;
+use ratatui::Viewport;
 use ratatui::prelude::*;
-use ratatui::{TerminalOptions, Viewport};
 use threet_storage::models::User;
 
 use tokio::sync::Mutex;
-use tokio::sync::mpsc::{Receiver, Sender, channel};
-use tokio::time::{MissedTickBehavior, interval};
+use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::channel;
+use tokio::time::MissedTickBehavior;
+use tokio::time::interval;
 
 use crate::Event;
-use crate::views::{AppView, AuthenticateView, View, ViewKind};
+use crate::views::AppView;
+use crate::views::AuthenticateView;
+use crate::views::View;
+use crate::views::ViewKind;
 use crate::widgets::StatusWidget;
 
 pub struct App<W: Write> {
@@ -52,25 +59,27 @@ impl<W: Write> App<W> {
 
         // disgusting naming, but I just want to make it work for now
         let tick_consumed = Arc::new(Mutex::new(true));
-        let tick_consumed2 = tick_consumed.clone();
 
-        let app_tx = self.events_sender.clone();
+        tokio::spawn({
+            let tick_consumed = tick_consumed.clone();
+            let app_tx = self.events_sender.clone();
 
-        tokio::spawn(async move {
-            let mut interval_ = interval(Duration::from_millis(350));
-            interval_.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            async move {
+                let mut interval_ = interval(Duration::from_millis(350));
+                interval_.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-            // FIXME!: need to kill that loop when app instance
-            // is dropped!!!
-            loop {
-                interval_.tick().await;
+                // FIXME!: need to kill that loop when app instance
+                // is dropped!!!
+                loop {
+                    interval_.tick().await;
 
-                let mut is_tick_consumed = tick_consumed2.lock().await;
+                    let mut tick_consumed = tick_consumed.lock().await;
 
-                if *is_tick_consumed {
-                    // FIXME: this will break if the app drop
-                    app_tx.send(Event::Tick).await.unwrap();
-                    *is_tick_consumed = false;
+                    if *tick_consumed {
+                        // FIXME: this will break if the app drop
+                        app_tx.send(Event::Tick).await.unwrap();
+                        *tick_consumed = false;
+                    }
                 }
             }
         });
@@ -99,12 +108,17 @@ impl<W: Write> App<W> {
                         }
                     };
 
+                    let mut should_rerender = false;
+
                     // we iterate over each char because the view
                     // needs to handle each character separatly
                     for c in stdin.chars() {
-                        self.view.handle_key(c).await;
+                        should_rerender = self.view.handle_key(c).await || should_rerender;
                     }
-                    self.render();
+
+                    if should_rerender {
+                        self.render();
+                    }
                 }
                 Event::SetView(view_kind) => self.set_view(view_kind),
                 Event::SetUser(user) => self.user = Some(user),
@@ -115,6 +129,7 @@ impl<W: Write> App<W> {
     }
 
     fn render(&mut self) {
+        println!("render");
         self.terminal
             .draw(|frame| {
                 let [view_area, status_area] =

@@ -80,7 +80,8 @@ pub trait View {
 
     /// called when an input received, the viewer
     /// will decide how to handle it and what to do with it
-    async fn handle_key(&mut self, key: char);
+    /// the returned boolean indicate if the app should rerender
+    async fn handle_key(&mut self, key: char) -> bool;
 
     /// called on every tick so the view can update its internal state
     async fn on_tick(&mut self) {}
@@ -118,8 +119,8 @@ impl View for AppView {
         proxy_view_call!(self, render(area, buf));
     }
 
-    async fn handle_key(&mut self, key: char) {
-        proxy_view_call!(self, handle_key(key).await);
+    async fn handle_key(&mut self, key: char) -> bool {
+        proxy_view_call!(self, handle_key(key).await)
     }
 
     async fn on_tick(&mut self) {

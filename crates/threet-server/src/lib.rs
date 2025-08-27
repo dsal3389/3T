@@ -4,8 +4,11 @@ use std::sync::Arc;
 
 use rand::rngs::OsRng;
 use russh::keys::PrivateKey;
-use russh::server::{Config, Server as _};
-use threet_storage::{DatabaseBuilder, set_database};
+use russh::server::Config;
+use russh::server::Server as _;
+
+use threet_storage::DatabaseBuilder;
+use threet_storage::set_database;
 
 mod channel;
 mod client;

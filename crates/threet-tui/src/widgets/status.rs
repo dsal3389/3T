@@ -1,5 +1,6 @@
 use ratatui::prelude::*;
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
+use ratatui::text::Span;
 
 use crate::views::ViewMode;
 

@@ -1,4 +1,6 @@
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::Constraint;
+use ratatui::layout::Layout;
+use ratatui::layout::Rect;
 
 pub fn get_middle_area(dem: (u16, u16), area: Rect) -> Rect {
     let [_, middle, _] = Layout::horizontal([

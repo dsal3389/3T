@@ -1,8 +1,12 @@
-use log::{Metadata, Record};
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
-use std::sync::mpsc::{Sender, channel};
+use std::sync::mpsc::Sender;
+use std::sync::mpsc::channel;
+
+use log::Metadata;
+use log::Record;
 
 pub(crate) struct Logger {
     sender: Sender<String>,
