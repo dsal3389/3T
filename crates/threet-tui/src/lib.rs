@@ -1,5 +1,6 @@
 mod app;
 mod event;
+mod layers;
 mod utils;
 mod views;
 mod widgets;

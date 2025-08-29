@@ -32,7 +32,7 @@ impl<'a> StatusWidget<'a> {
 
     fn view_spans(&self) -> [Span; 2] {
         [
-            Span::from(format!(" {} ", self.view_name)).style(Style::new().on_blue()),
+            Span::from(format!(" {} ", self.view_name)).style(Style::new().italic().on_blue()),
             Span::from("\u{e0b0}").style(Style::new().blue()),
         ]
     }

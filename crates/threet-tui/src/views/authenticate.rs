@@ -1,17 +1,22 @@
-use anyhow::Context;
+use std::time::Duration;
+
 use ratatui::layout::Constraint;
 use ratatui::layout::Layout;
 use ratatui::prelude::*;
 use ratatui::widgets::Block;
 use ratatui::widgets::Padding;
+use ratatui::widgets::Paragraph;
 use tokio::sync::mpsc::Sender;
+use tokio::task::JoinHandle;
 
 use threet_storage::get_database;
 use threet_storage::models::User;
 
-use crate::Event;
+use crate::event::Event;
+use crate::event::KeyCode;
 use crate::utils::get_middle_area;
-use crate::widgets::Button;
+use crate::views::ViewKind;
+use crate::widgets::ButtonWidget;
 use crate::widgets::Field;
 use crate::widgets::FieldBuilder;
 use crate::widgets::FieldKind;
@@ -69,9 +74,13 @@ pub struct AuthenticateView {
     focuse: Focuse<FocuseArea>,
     mode: ViewMode,
 
+    // authentication task will contain the task handler for the
+    // authentication, it is a separate task to not block the processor
+    // and if we see we have a authentication task that is not
+    // done, we display a loading screen
+    authentication_task: Option<JoinHandle<()>>,
     username: Field,
     password: Field,
-    auth_btn: Button,
 }
 
 impl AuthenticateView {
@@ -89,16 +98,40 @@ impl AuthenticateView {
             app_tx,
             username,
             password,
-            auth_btn: Button::new("LOGIN".to_string(), false),
-            mode: ViewMode::default(),
+            authentication_task: None,
             focuse: Focuse::default(),
+            mode: ViewMode::default(),
         }
     }
 
-    pub async fn try_authenticate(&self) -> anyhow::Result<User> {
-        User::by_username_password(get_database(), self.username.value(), self.password.value())
-            .await
-            .context("username or password incorrect")
+    #[inline]
+    fn start_authentication_task(&mut self) {
+        self.authentication_task = Some(tokio::spawn({
+            let username = self.username.value().to_string();
+            let password = self.password.value().to_string();
+            let app_tx = self.app_tx.clone();
+
+            async move {
+                let user = User::by_username_password(get_database(), &username, &password).await;
+                println!("user is some {}", user.is_some());
+
+                tokio::time::sleep(Duration::from_secs(3)).await;
+
+                if user.is_some() {
+                    app_tx.send(Event::SetUser(user.unwrap())).await.unwrap();
+                    app_tx.send(Event::SetView(ViewKind::Chat)).await.unwrap();
+                } else {
+                    app_tx.send(Event::Render).await.unwrap();
+                }
+            }
+        }));
+    }
+
+    #[inline]
+    fn is_authentication_task_running(&self) -> bool {
+        self.authentication_task
+            .as_ref()
+            .is_some_and(|handle| !handle.is_finished())
     }
 }
 
@@ -113,48 +146,65 @@ impl View for AuthenticateView {
         self.mode.clone()
     }
 
-    async fn on_tick(&mut self) {
-        println!("tick")
-    }
+    async fn handle_key(&mut self, keycode: KeyCode) -> bool {
+        // if authentication task is running we should not handle
+        // any new key event and we don't need to rerender the screen
+        if self.is_authentication_task_running() {
+            return false;
+        }
 
-    async fn handle_key(&mut self, key: char) -> bool {
         // most of the actions in the view require rerendering, so
         // it will be easier to start with a truthy value
         let mut should_rerender = true;
 
         match self.mode {
-            ViewMode::Normal => match key {
-                'k' => self.focuse.previous(),
-                '\t' | 'j' => self.focuse.next(),
-                'i' | 'a' => {
+            ViewMode::Normal => match keycode {
+                KeyCode::Char('k') => self.focuse.previous(),
+                KeyCode::Tab | KeyCode::Char('j') => self.focuse.next(),
+                KeyCode::Char('i') | KeyCode::Char('a') => {
                     self.mode = ViewMode::Insert;
                 }
-                ' ' | '\n' if self.focuse.is_authenticate_button() => {
-                    todo!()
+                KeyCode::Space | KeyCode::Enter if self.focuse.is_authenticate_button() => {
+                    self.start_authentication_task()
                 }
                 _ => {
                     should_rerender = false;
                 }
             },
-            ViewMode::Insert => {
-                // if the key is ESC key
-                if key as u32 == 0x1b {
+            ViewMode::Insert => match keycode {
+                KeyCode::Esc => {
                     self.mode = ViewMode::Normal;
-                } else {
-                    match self.focuse.current() {
-                        FocuseArea::UsernameField => self.username.push_char(key),
-                        FocuseArea::PasswordField => self.password.push_char(key),
-                        _ => {
-                            should_rerender = false;
-                        }
-                    }
                 }
-            }
+                KeyCode::Char(..) | KeyCode::Space => match self.focuse.current() {
+                    FocuseArea::UsernameField => self.username.push_char(keycode.into()),
+                    FocuseArea::PasswordField => self.password.push_char(keycode.into()),
+                    _ => {
+                        should_rerender = false;
+                    }
+                },
+                KeyCode::Backspace => match self.focuse.current() {
+                    FocuseArea::UsernameField => self.username.remove_char(),
+                    FocuseArea::PasswordField => self.password.remove_char(),
+                    _ => {
+                        should_rerender = false;
+                    }
+                },
+                _ => {
+                    should_rerender = false;
+                }
+            },
         };
         should_rerender
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
+        // if the authentication task is not done
+        // we should show a loading page
+        if self.is_authentication_task_running() {
+            Paragraph::new("loading").centered().render(area, buf);
+            return;
+        }
+
         let middle = get_middle_area((60, 13), area);
         let container = Block::bordered()
             .padding(Padding::symmetric(2, 1))
@@ -168,19 +218,20 @@ impl View for AuthenticateView {
             FocuseArea::UsernameField => (
                 self.username.widget().focused(),
                 self.password.widget(),
-                self.auth_btn.widget(),
+                ButtonWidget::new("LOGIN"),
             ),
             FocuseArea::PasswordField => (
                 self.username.widget(),
                 self.password.widget().focused(),
-                self.auth_btn.widget(),
+                ButtonWidget::new("LOGIN"),
             ),
             FocuseArea::AuthenticateButton => (
                 self.username.widget(),
                 self.password.widget(),
-                self.auth_btn.widget().focused(),
+                ButtonWidget::new("LOGIN").focused(),
             ),
         };
+
         username_widget.render(username_area, buf);
         password_widget.render(password_area, buf);
         btn_widget.render(btn_area, buf);

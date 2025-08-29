@@ -3,6 +3,8 @@ use ratatui::widgets::Block;
 use ratatui::widgets::Padding;
 use ratatui::widgets::Paragraph;
 
+/// since the `Field` type have a lot of initial parameters
+/// it is easier to create a `Field` with the builder pattern
 #[derive(Default)]
 pub struct FieldBuilder {
     buffer: String,
@@ -53,9 +55,10 @@ impl FieldBuilder {
     #[inline]
     pub fn build(self) -> Field {
         Field {
+            cursor: self.buffer.len(),
             buffer: self.buffer,
-            kind: self.kind,
             placeholder: self.placeholder,
+            kind: self.kind,
             style: self.style,
         }
     }
@@ -86,6 +89,7 @@ pub enum FieldStyle {
 pub struct Field {
     buffer: String,
     kind: FieldKind,
+    cursor: usize,
     placeholder: Option<String>,
     style: FieldStyle,
 }
@@ -101,7 +105,15 @@ impl Field {
     /// push in relevense to the cursor position
     #[inline]
     pub fn push_char(&mut self, c: char) {
-        self.buffer.push(c);
+        self.buffer.insert(self.cursor, c);
+        self.cursor += 1;
+    }
+
+    pub fn remove_char(&mut self) {
+        if self.cursor > 0 {
+            self.cursor -= 1;
+            self.buffer.remove(self.cursor);
+        }
     }
 
     /// returns the field current value

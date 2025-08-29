@@ -14,9 +14,11 @@ use tokio::sync::mpsc::channel;
 use tokio::time::MissedTickBehavior;
 use tokio::time::interval;
 
-use crate::Event;
+use crate::event::Event;
+use crate::event::KeyCode;
 use crate::views::AppView;
 use crate::views::AuthenticateView;
+use crate::views::ChatView;
 use crate::views::View;
 use crate::views::ViewKind;
 use crate::widgets::StatusWidget;
@@ -55,6 +57,9 @@ impl<W: Write> App<W> {
 
     pub async fn run(mut self) -> anyhow::Result<()> {
         // initial unconditiond application render
+        self.terminal
+            .clear()
+            .expect("couldn't clear terminal screen");
         self.render();
 
         // disgusting naming, but I just want to make it work for now
@@ -103,7 +108,7 @@ impl<W: Write> App<W> {
                     let stdin = match String::from_utf8(data) {
                         Ok(string) => string,
                         Err(err) => {
-                            log::warn!("warning converting to utf-8 {}", err);
+                            log::warn!("issue converting received bytes to utf-8 {}", err);
                             continue;
                         }
                     };
@@ -113,23 +118,27 @@ impl<W: Write> App<W> {
                     // we iterate over each char because the view
                     // needs to handle each character separatly
                     for c in stdin.chars() {
-                        should_rerender = self.view.handle_key(c).await || should_rerender;
+                        let Some(keycode) = KeyCode::from_u32(c as u32) else {
+                            continue;
+                        };
+                        should_rerender = self.view.handle_key(keycode).await || should_rerender;
                     }
 
                     if should_rerender {
                         self.render();
                     }
                 }
-                Event::SetView(view_kind) => self.set_view(view_kind),
+                Event::SetView(view_kind) => {
+                    self.set_view(view_kind);
+                    self.render();
+                }
                 Event::SetUser(user) => self.user = Some(user),
-                _ => {}
             };
         }
         Ok(())
     }
 
     fn render(&mut self) {
-        println!("render");
         self.terminal
             .draw(|frame| {
                 let [view_area, status_area] =
@@ -147,8 +156,11 @@ impl<W: Write> App<W> {
 
     fn set_view(&mut self, view_kind: ViewKind) {
         match view_kind {
-            AuthenticateView => {
+            ViewKind::Authenticate => {
                 todo!()
+            }
+            ViewKind::Chat => {
+                self.view = AppView::Chat(ChatView::new());
             }
         }
     }

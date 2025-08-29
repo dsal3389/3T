@@ -7,7 +7,6 @@ pub use field::FieldBuilder;
 pub use field::FieldKind;
 pub use field::FieldWidget;
 
-pub use button::Button;
 pub use button::ButtonWidget;
 
 pub use status::StatusWidget;

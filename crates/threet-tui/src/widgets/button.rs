@@ -2,54 +2,28 @@ use ratatui::prelude::*;
 use ratatui::widgets::Block;
 use ratatui::widgets::Paragraph;
 
-pub struct Button {
-    clicked: bool,
-    label: String,
-    disabled: bool,
-}
-
-impl Button {
-    #[inline]
-    pub fn new(label: String, disabled: bool) -> Button {
-        Button {
-            label,
-            disabled,
-            clicked: false,
-        }
-    }
-
-    #[inline]
-    pub fn click(&mut self) {
-        self.clicked = true;
-    }
-
-    #[inline]
-    pub fn reset(&mut self) {
-        self.clicked = false;
-    }
-
-    #[inline]
-    pub fn widget(&self) -> ButtonWidget {
-        ButtonWidget {
-            label: self.label.clone(),
-            focused: false,
-        }
-    }
-}
-
-pub struct ButtonWidget {
-    label: String,
+pub struct ButtonWidget<'a> {
+    label: &'a str,
     focused: bool,
 }
 
-impl ButtonWidget {
+impl<'a> ButtonWidget<'a> {
+    #[inline]
+    pub fn new(label: &'a str) -> Self {
+        Self {
+            label,
+            focused: false,
+        }
+    }
+
+    #[inline]
     pub fn focused(mut self) -> Self {
         self.focused = true;
         self
     }
 }
 
-impl Widget for ButtonWidget {
+impl Widget for ButtonWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,

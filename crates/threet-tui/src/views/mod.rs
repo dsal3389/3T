@@ -3,14 +3,22 @@ use std::ops::Deref;
 use ratatui::prelude::*;
 
 mod authenticate;
+mod chat;
 
 pub use authenticate::AuthenticateView;
+pub use chat::ChatView;
 
+use crate::event::KeyCode;
+
+/// each view has a single focuse area, users can change their focuse
+/// usually when they are in Normal mode via TAB | j | k keys, this iterator
+/// should yield a different enum variant matching the requested direction
 trait FocuseIterator {
     fn previous(&mut self) -> Self;
     fn next(&mut self) -> Self;
 }
 
+#[derive(Debug)]
 #[repr(transparent)]
 struct Focuse<K: FocuseIterator + Clone>(K);
 
@@ -44,7 +52,7 @@ where
     K: FocuseIterator + Clone + Default,
 {
     fn default() -> Self {
-        Self(K::default())
+        Self::new(K::default())
     }
 }
 
@@ -58,13 +66,15 @@ where
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Debug, Clone)]
 pub enum ViewMode {
     #[default]
     Normal,
     Insert,
 }
 
+/// the view is the one who controls the mode, what key binds there are
+/// what to display and where
 pub trait View {
     /// the view name
     fn name(&self) -> &str;
@@ -81,7 +91,7 @@ pub trait View {
     /// called when an input received, the viewer
     /// will decide how to handle it and what to do with it
     /// the returned boolean indicate if the app should rerender
-    async fn handle_key(&mut self, key: char) -> bool;
+    async fn handle_key(&mut self, keycode: KeyCode) -> bool;
 
     /// called on every tick so the view can update its internal state
     async fn on_tick(&mut self) {}
@@ -94,16 +104,20 @@ macro_rules! proxy_view_call {
     ($self: expr, $($call: tt)*) => {
         match $self {
             AppView::Authenticate(view) => view.$($call)*,
+            AppView::Chat(view) => view.$($call)*,
         }
     };
 }
 
+#[derive(Debug, Clone)]
 pub enum ViewKind {
     Authenticate,
+    Chat,
 }
 
 pub enum AppView {
     Authenticate(AuthenticateView),
+    Chat(ChatView),
 }
 
 impl View for AppView {
@@ -119,8 +133,8 @@ impl View for AppView {
         proxy_view_call!(self, render(area, buf));
     }
 
-    async fn handle_key(&mut self, key: char) -> bool {
-        proxy_view_call!(self, handle_key(key).await)
+    async fn handle_key(&mut self, keycode: KeyCode) -> bool {
+        proxy_view_call!(self, handle_key(keycode).await)
     }
 
     async fn on_tick(&mut self) {
