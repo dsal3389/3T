@@ -86,13 +86,10 @@ pub struct AuthenticateView {
 impl AuthenticateView {
     pub fn new(app_tx: Sender<Event>) -> Self {
         let username = FieldBuilder::default()
+            .max(16)
             .kind(FieldKind::String)
-            .placeholder("username...".to_string())
             .build();
-        let password = FieldBuilder::default()
-            .kind(FieldKind::Secret)
-            .placeholder("password...".to_string())
-            .build();
+        let password = FieldBuilder::default().kind(FieldKind::Secret).build();
 
         AuthenticateView {
             app_tx,
@@ -209,6 +206,7 @@ impl View for AuthenticateView {
         let container = Block::bordered()
             .padding(Padding::symmetric(2, 1))
             .title("Authenticate");
+
         let [username_area, password_area, btn_area] =
             Layout::vertical([Constraint::Length(3); 3]).areas(container.inner(middle));
 
@@ -232,8 +230,12 @@ impl View for AuthenticateView {
             ),
         };
 
-        username_widget.render(username_area, buf);
-        password_widget.render(password_area, buf);
+        username_widget
+            .placeholder("username...")
+            .render(username_area, buf);
+        password_widget
+            .placeholder("password...")
+            .render(password_area, buf);
         btn_widget.render(btn_area, buf);
     }
 }

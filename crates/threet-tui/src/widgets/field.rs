@@ -3,6 +3,8 @@ use ratatui::widgets::Block;
 use ratatui::widgets::Padding;
 use ratatui::widgets::Paragraph;
 
+use crate::conditional_build;
+
 /// since the `Field` type have a lot of initial parameters
 /// it is easier to create a `Field` with the builder pattern
 #[derive(Default)]
@@ -11,20 +13,14 @@ pub struct FieldBuilder {
     kind: FieldKind,
     placeholder: Option<String>,
     style: FieldStyle,
-    min: u16,
-    max: u16,
+    min: usize,
+    max: usize,
 }
 
 impl FieldBuilder {
     #[inline]
     pub fn initial_buffer(mut self, value: String) -> Self {
         self.buffer = value;
-        self
-    }
-
-    #[inline]
-    pub fn placeholder(mut self, value: String) -> Self {
-        self.placeholder = Some(value);
         self
     }
 
@@ -41,13 +37,13 @@ impl FieldBuilder {
     }
 
     #[inline]
-    pub fn min(mut self, value: u16) -> Self {
+    pub fn min(mut self, value: usize) -> Self {
         self.min = value;
         self
     }
 
     #[inline]
-    pub fn max(mut self, value: u16) -> Self {
+    pub fn max(mut self, value: usize) -> Self {
         self.max = value;
         self
     }
@@ -57,9 +53,10 @@ impl FieldBuilder {
         Field {
             cursor: self.buffer.len(),
             buffer: self.buffer,
-            placeholder: self.placeholder,
             kind: self.kind,
             style: self.style,
+            min: self.min,
+            max: self.max,
         }
     }
 }
@@ -90,8 +87,9 @@ pub struct Field {
     buffer: String,
     kind: FieldKind,
     cursor: usize,
-    placeholder: Option<String>,
     style: FieldStyle,
+    min: usize,
+    max: usize,
 }
 
 impl Field {
@@ -103,8 +101,11 @@ impl Field {
 
     /// pust a character into the field buffer, the char will be
     /// push in relevense to the cursor position
-    #[inline]
     pub fn push_char(&mut self, c: char) {
+        if self.max > 0 && self.max <= self.buffer.len() {
+            return;
+        }
+
         self.buffer.insert(self.cursor, c);
         self.cursor += 1;
     }
@@ -132,9 +133,11 @@ impl Field {
         };
         FieldWidget {
             content,
+            label: None,
             focused: false,
             field_style: self.style.clone(),
-            placeholder: self.placeholder.as_ref().map(|v| v.as_str()),
+            placeholder: None,
+            max: self.max,
         }
     }
 }
@@ -144,12 +147,24 @@ pub struct FieldWidget<'a> {
     content: String,
     field_style: FieldStyle,
     placeholder: Option<&'a str>,
+    label: Option<&'a str>,
     focused: bool,
+    max: usize,
 }
 
 impl<'a> FieldWidget<'a> {
     pub fn focused(mut self) -> Self {
         self.focused = true;
+        self
+    }
+
+    pub fn label(mut self, label: &'a str) -> Self {
+        self.label = Some(label);
+        self
+    }
+
+    pub fn placeholder(mut self, placeholder: &'a str) -> Self {
+        self.placeholder = Some(placeholder);
         self
     }
 }
@@ -165,18 +180,21 @@ impl<'a> Widget for FieldWidget<'a> {
                 Style::new().dark_gray().italic(),
             )
         } else {
-            Line::from(self.content)
+            Line::from(self.content.as_str())
         };
 
-        let p = match self.field_style {
-            FieldStyle::Outline => Paragraph::new(line).block(if self.focused {
-                Block::bordered()
-                    .padding(Padding::left(1))
-                    .style(Style::new().yellow())
-            } else {
-                Block::bordered().padding(Padding::left(1))
-            }),
-        };
-        p.render(area, buf);
+        let block = conditional_build!(
+            Block::bordered().padding(Padding::left(1)),
+            (self.focused, style(Style::new().yellow())),
+            (self.label.is_some(), title_top(self.label.unwrap())),
+            (
+                self.max > 0,
+                title_bottom(
+                    Line::from(format!(" ({}/{}) ", self.content.len(), self.max)).right_aligned(),
+                )
+            )
+        );
+
+        Paragraph::new(line).block(block).render(area, buf);
     }
 }
