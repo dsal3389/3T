@@ -94,7 +94,7 @@ pub trait View {
     async fn handle_key(&mut self, keycode: KeyCode) -> bool;
 
     /// called on every tick so the view can update its internal state
-    async fn on_tick(&mut self) {}
+    async fn tick(&mut self) {}
 }
 
 /// since the `AppView` is just a container of all type of `Views`
@@ -137,8 +137,8 @@ impl View for AppView {
         proxy_view_call!(self, handle_key(keycode).await)
     }
 
-    async fn on_tick(&mut self) {
-        proxy_view_call!(self, on_tick().await)
+    async fn tick(&mut self) {
+        proxy_view_call!(self, tick().await)
     }
 }
 

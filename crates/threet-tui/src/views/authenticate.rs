@@ -3,6 +3,8 @@ use std::time::Duration;
 use ratatui::layout::Constraint;
 use ratatui::layout::Layout;
 use ratatui::prelude::*;
+use ratatui::style::Styled;
+use ratatui::text::ToLine;
 use ratatui::widgets::Block;
 use ratatui::widgets::Padding;
 use ratatui::widgets::Paragraph;
@@ -14,6 +16,7 @@ use threet_storage::models::User;
 
 use crate::event::Event;
 use crate::event::KeyCode;
+use crate::notifications::Notification;
 use crate::utils::get_middle_area;
 use crate::views::ViewKind;
 use crate::widgets::ButtonWidget;
@@ -86,10 +89,15 @@ pub struct AuthenticateView {
 impl AuthenticateView {
     pub fn new(app_tx: Sender<Event>) -> Self {
         let username = FieldBuilder::default()
+            .min(2)
             .max(16)
             .kind(FieldKind::String)
             .build();
-        let password = FieldBuilder::default().kind(FieldKind::Secret).build();
+        let password = FieldBuilder::default()
+            .min(2)
+            .max(32)
+            .kind(FieldKind::Secret)
+            .build();
 
         AuthenticateView {
             app_tx,
@@ -109,16 +117,23 @@ impl AuthenticateView {
             let app_tx = self.app_tx.clone();
 
             async move {
-                let user = User::by_username_password(get_database(), &username, &password).await;
-                println!("user is some {}", user.is_some());
-
-                tokio::time::sleep(Duration::from_secs(3)).await;
-
-                if user.is_some() {
-                    app_tx.send(Event::SetUser(user.unwrap())).await.unwrap();
-                    app_tx.send(Event::SetView(ViewKind::Chat)).await.unwrap();
-                } else {
-                    app_tx.send(Event::Render).await.unwrap();
+                match User::by_username_password(get_database(), &username, &password).await {
+                    Some(user) => {
+                        app_tx.send(Event::SetUser(user)).await.unwrap();
+                        app_tx.send(Event::SetView(ViewKind::Chat)).await.unwrap();
+                    }
+                    None => {
+                        let notification = Notification::error(
+                            "authentiation error".to_string(),
+                            "couldn't authentication with given credentials".to_string(),
+                        );
+                        // the notification message should also trigger an unconditional
+                        // render to display the notification
+                        app_tx
+                            .send(Event::Notification((notification, Duration::from_secs(5))))
+                            .await
+                            .unwrap();
+                    }
                 }
             }
         }));
@@ -157,8 +172,16 @@ impl View for AuthenticateView {
         match self.mode {
             ViewMode::Normal => match keycode {
                 KeyCode::Char('k') => self.focuse.previous(),
-                KeyCode::Tab | KeyCode::Char('j') => self.focuse.next(),
-                KeyCode::Char('i') | KeyCode::Char('a') => {
+                KeyCode::Char('j') | KeyCode::Tab => self.focuse.next(),
+
+                // if the current focuse is not an input field, we don't want
+                // to enter Insert mode because there is no point
+                KeyCode::Char('i') | KeyCode::Char('a')
+                    if matches!(
+                        self.focuse.current(),
+                        FocuseArea::UsernameField | FocuseArea::PasswordField
+                    ) =>
+                {
                     self.mode = ViewMode::Insert;
                 }
                 KeyCode::Space | KeyCode::Enter if self.focuse.is_authenticate_button() => {
@@ -172,20 +195,22 @@ impl View for AuthenticateView {
                 KeyCode::Esc => {
                     self.mode = ViewMode::Normal;
                 }
-                KeyCode::Char(..) | KeyCode::Space => match self.focuse.current() {
-                    FocuseArea::UsernameField => self.username.push_char(keycode.into()),
-                    FocuseArea::PasswordField => self.password.push_char(keycode.into()),
-                    _ => {
-                        should_rerender = false;
-                    }
-                },
-                KeyCode::Backspace => match self.focuse.current() {
-                    FocuseArea::UsernameField => self.username.remove_char(),
-                    FocuseArea::PasswordField => self.password.remove_char(),
-                    _ => {
-                        should_rerender = false;
-                    }
-                },
+                // TODO: find a better way to push char based on focuse
+                KeyCode::Char(..) | KeyCode::Space => {
+                    should_rerender = match self.focuse.current() {
+                        FocuseArea::UsernameField => self.username.push_char(keycode.into()),
+                        FocuseArea::PasswordField => self.password.push_char(keycode.into()),
+                        _ => false,
+                    };
+                }
+                // TODO: find a better way to push char based on focuse
+                KeyCode::Backspace => {
+                    should_rerender = match self.focuse.current() {
+                        FocuseArea::UsernameField => self.username.remove_char(),
+                        FocuseArea::PasswordField => self.password.remove_char(),
+                        _ => false,
+                    };
+                }
                 _ => {
                     should_rerender = false;
                 }
@@ -205,8 +230,9 @@ impl View for AuthenticateView {
         let middle = get_middle_area((60, 13), area);
         let container = Block::bordered()
             .padding(Padding::symmetric(2, 1))
-            .title("Authenticate");
-
+            .border_type(ratatui::widgets::BorderType::Thick)
+            .title_top("[ Authenticate ]".to_line().style(Style::new().bold()))
+            .style(Style::new().dark_gray());
         let [username_area, password_area, btn_area] =
             Layout::vertical([Constraint::Length(3); 3]).areas(container.inner(middle));
 

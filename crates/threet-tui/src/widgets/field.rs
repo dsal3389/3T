@@ -11,7 +11,6 @@ use crate::conditional_build;
 pub struct FieldBuilder {
     buffer: String,
     kind: FieldKind,
-    placeholder: Option<String>,
     style: FieldStyle,
     min: usize,
     max: usize,
@@ -74,6 +73,7 @@ pub enum FieldKind {
 pub enum FieldStyle {
     #[default]
     Outline,
+    Transparent,
 }
 
 /// represent a single line text field that can hold
@@ -99,21 +99,33 @@ impl Field {
         self.kind.clone()
     }
 
+    #[inline]
+    pub fn valid(&self) -> bool {
+        self.min > 0 && self.buffer.len() > self.min
+    }
+
     /// pust a character into the field buffer, the char will be
-    /// push in relevense to the cursor position
-    pub fn push_char(&mut self, c: char) {
+    /// push in relevense to the cursor position, the returned
+    /// bool indicate if the char was actually pushed
+    pub fn push_char(&mut self, c: char) -> bool {
         if self.max > 0 && self.max <= self.buffer.len() {
-            return;
+            return false;
         }
 
         self.buffer.insert(self.cursor, c);
         self.cursor += 1;
+        true
     }
 
-    pub fn remove_char(&mut self) {
+    /// return a boolean value indicating if a character was
+    /// removed
+    pub fn remove_char(&mut self) -> bool {
         if self.cursor > 0 {
             self.cursor -= 1;
             self.buffer.remove(self.cursor);
+            true
+        } else {
+            false
         }
     }
 
@@ -153,16 +165,19 @@ pub struct FieldWidget<'a> {
 }
 
 impl<'a> FieldWidget<'a> {
+    #[inline]
     pub fn focused(mut self) -> Self {
         self.focused = true;
         self
     }
 
+    #[inline]
     pub fn label(mut self, label: &'a str) -> Self {
         self.label = Some(label);
         self
     }
 
+    #[inline]
     pub fn placeholder(mut self, placeholder: &'a str) -> Self {
         self.placeholder = Some(placeholder);
         self
@@ -183,18 +198,26 @@ impl<'a> Widget for FieldWidget<'a> {
             Line::from(self.content.as_str())
         };
 
-        let block = conditional_build!(
-            Block::bordered().padding(Padding::left(1)),
-            (self.focused, style(Style::new().yellow())),
-            (self.label.is_some(), title_top(self.label.unwrap())),
-            (
-                self.max > 0,
-                title_bottom(
-                    Line::from(format!(" ({}/{}) ", self.content.len(), self.max)).right_aligned(),
-                )
-            )
-        );
+        match self.field_style {
+            FieldStyle::Outline => {
+                let block = conditional_build!(
+                    Block::bordered().padding(Padding::left(1)),
+                    (self.focused, (style(Style::new().yellow())) else style(Style::new().dark_gray())),
+                    (self.label.is_some(), (title_top(self.label.unwrap()))),
+                    (
+                        self.max > 0,
+                        (title_bottom(
+                            Line::from(format!(" {}/{} ", self.content.len(), self.max))
+                                .right_aligned(),
+                        ))
+                    )
+                );
 
-        Paragraph::new(line).block(block).render(area, buf);
+                Paragraph::new(line).block(block).render(area, buf);
+            }
+            FieldStyle::Transparent => {
+                Paragraph::new(line).render(area, buf);
+            }
+        }
     }
 }

@@ -16,6 +16,7 @@ use tokio::time::interval;
 
 use crate::event::Event;
 use crate::event::KeyCode;
+use crate::notifications::NotificationServiceWidget;
 use crate::views::AppView;
 use crate::views::AuthenticateView;
 use crate::views::ChatView;
@@ -27,6 +28,13 @@ pub struct App<W: Write> {
     events: Receiver<Event>,
     events_sender: Sender<Event>,
     terminal: Terminal<CrosstermBackend<W>>,
+
+    // the app notification service for displaying notifications
+    // to the user, this service is independent of the view, currently
+    // the max possible notifications at the same time is set to 3
+    notifications: NotificationServiceWidget<3>,
+
+    // defines the authenticated user for the current app
     user: Option<User>,
     view: AppView,
 }
@@ -49,6 +57,7 @@ impl<W: Write> App<W> {
             terminal,
             events: app_rx,
             events_sender: app_tx.clone(),
+            notifications: NotificationServiceWidget::new(app_tx.clone()),
             view: AppView::Authenticate(view),
             user: None,
         };
@@ -62,7 +71,10 @@ impl<W: Write> App<W> {
             .expect("couldn't clear terminal screen");
         self.render();
 
-        // disgusting naming, but I just want to make it work for now
+        // a boolean value indicating if the tick event was comsumed, the tick
+        // event task won't place more `Tick` events on the channel
+        // if the last `Tick` event was not consumed
+        // TODO: maybe should this be atomic bool?
         let tick_consumed = Arc::new(Mutex::new(true));
 
         tokio::spawn({
@@ -92,7 +104,8 @@ impl<W: Write> App<W> {
         while let Some(event) = self.events.recv().await {
             match event {
                 Event::Tick => {
-                    self.view.on_tick().await;
+                    self.view.tick().await;
+                    self.notifications.tick().await;
 
                     let mut tick_consumed = tick_consumed.lock().await;
                     *tick_consumed = true;
@@ -128,6 +141,10 @@ impl<W: Write> App<W> {
                         self.render();
                     }
                 }
+                Event::Notification((notification, duration)) => {
+                    self.notifications.push_notification(notification, duration);
+                    self.render();
+                }
                 Event::SetView(view_kind) => {
                     self.set_view(view_kind);
                     self.render();
@@ -150,6 +167,12 @@ impl<W: Write> App<W> {
                     StatusWidget::new(self.view.name(), self.view.mode()),
                     status_area,
                 );
+
+                if self.notifications.should_render() {
+                    // we render the notifications only after all the other widgets are drawn
+                    // because the notification should be at the top of all widgets
+                    frame.render_widget(&self.notifications, view_area);
+                }
             })
             .unwrap();
     }

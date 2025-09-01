@@ -24,8 +24,8 @@ impl<'a> StatusWidget<'a> {
                 Span::from("\u{e0b0}").style(Style::new().green().on_blue()),
             ],
             ViewMode::Normal => [
-                Span::from(" Normal ").style(Style::new().bold().black().on_magenta()),
-                Span::from("\u{e0b0}").style(Style::new().magenta().on_blue()),
+                Span::from(" Normal ").style(Style::new().bold().black().on_yellow()),
+                Span::from("\u{e0b0}").style(Style::new().yellow().on_blue()),
             ],
         }
     }

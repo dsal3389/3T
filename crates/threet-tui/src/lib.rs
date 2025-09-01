@@ -1,6 +1,6 @@
 mod app;
 mod event;
-mod layers;
+mod notifications;
 mod utils;
 mod views;
 mod widgets;
@@ -15,13 +15,13 @@ pub use event::Event;
 /// ```
 /// let block = conditional_build(
 ///     Block::bordered(),
-///     (x < y, title_top("y is bigger") else title_top("x is bigger")),
-///     (focused, style(Style::new().yellow())
+///     (x < y, (title_top("y is bigger")) else title_top("x is bigger")),
+///     (focused, (style(Style::new().yellow()))
 /// )
 /// ```
 #[macro_export]
 macro_rules! conditional_build {
-    ($builder:expr, $(($condition:expr, $($method:tt)* $(else $($else_method:tt)*)?)),+) => {
+    ($builder:expr, $(($condition:expr, ($($method:tt)*) $(else $($else_method:tt)*)?)),+) => {
         {
             let item = $builder;
 

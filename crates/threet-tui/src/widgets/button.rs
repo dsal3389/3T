@@ -2,6 +2,8 @@ use ratatui::prelude::*;
 use ratatui::widgets::Block;
 use ratatui::widgets::Paragraph;
 
+use crate::conditional_build;
+
 pub struct ButtonWidget<'a> {
     label: &'a str,
     focused: bool,
@@ -28,13 +30,14 @@ impl Widget for ButtonWidget<'_> {
     where
         Self: Sized,
     {
+        let block = conditional_build!(
+            Block::bordered(),
+            (self.focused, (style(Style::new().yellow())) else style(Style::new().dark_gray()))
+        );
         Paragraph::new(self.label)
             .centered()
-            .block(if self.focused {
-                Block::bordered().style(Style::new().yellow())
-            } else {
-                Block::bordered()
-            })
+            .style(Style::new().bold())
+            .block(block.border_type(ratatui::widgets::BorderType::Thick))
             .render(area, buf);
     }
 }

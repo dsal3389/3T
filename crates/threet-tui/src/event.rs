@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use threet_storage::models::User;
 
+use crate::notifications::Notification;
 use crate::views::ViewKind;
 
 #[derive(Debug, Clone)]
@@ -49,6 +52,10 @@ pub enum Event {
     Resize((u16, u16)),
 
     Tick,
+
+    /// push a new notification to the app instance to display
+    /// to the user
+    Notification((Notification, Duration)),
 
     /// set different view for the app, the app knows how to initialize
     /// the specifically requested view, the enum to pass the view itself because
