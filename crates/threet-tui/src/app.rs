@@ -2,7 +2,10 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
+use ratatui::TerminalOptions;
+use ratatui::Viewport;
 use ratatui::prelude::*;
+
 use threet_storage::models::User;
 
 use tokio::sync::Mutex;
@@ -16,22 +19,14 @@ use crate::compositor::Compositor;
 use crate::compositor::Layout;
 use crate::event::Event;
 use crate::event::KeyCode;
-use crate::notifications::NotificationServiceWidget;
 use crate::views::AuthenticateView;
-use crate::views::ChatView;
-use crate::views::View;
-use crate::widgets::StatusWidget;
 
 pub struct App<W: Write> {
     events: Receiver<Event>,
     events_sender: Sender<Event>,
+    terminal: Terminal<CrosstermBackend<W>>,
 
-    compositor: Compositor<W>,
-
-    // the app notification service for displaying notifications
-    // to the user, this service is independent of the view, currently
-    // the max possible notifications at the same time is set to 3
-    notifications: NotificationServiceWidget<3>,
+    compositor: Compositor,
 
     // defines the authenticated user for the current app
     user: Option<User>,
@@ -42,13 +37,27 @@ impl<W: Write> App<W> {
     /// given stdout buffer, the returned value includes a channel sender
     /// to insert events to the app from outside
     pub fn new(stdout: W, size: (u16, u16)) -> (Self, Sender<Event>) {
+        let area = Rect::new(0, 0, size.0, size.1);
         let (app_tx, app_rx) = channel(1);
-        let mut compositor = Compositor::new(stdout, size);
+        let terminal = Terminal::with_options(
+            CrosstermBackend::new(stdout),
+            TerminalOptions {
+                viewport: Viewport::Fixed(area),
+            },
+        )
+        .unwrap();
+
+        let mut compositor = Compositor::new(area);
 
         compositor.split_view(
             Box::new(AuthenticateView::new(app_tx.clone())),
-            Layout::Horizontal,
+            Layout::Vertical,
         );
+        compositor.split_view(
+            Box::new(AuthenticateView::new(app_tx.clone())),
+            Layout::Vertical,
+        );
+
         compositor.split_view(
             Box::new(AuthenticateView::new(app_tx.clone())),
             Layout::Horizontal,
@@ -57,15 +66,16 @@ impl<W: Write> App<W> {
         let app = App {
             events: app_rx,
             events_sender: app_tx.clone(),
-            notifications: NotificationServiceWidget::new(app_tx.clone()),
             user: None,
             compositor,
+            terminal,
         };
         (app, app_tx)
     }
 
     pub async fn run(mut self) -> anyhow::Result<()> {
         // initial unconditiond application render
+        self.terminal.clear().unwrap();
         self.render();
 
         // a boolean value indicating if the tick event was comsumed, the tick
@@ -100,7 +110,25 @@ impl<W: Write> App<W> {
 
         while let Some(event) = self.events.recv().await {
             match event {
+                Event::Stdin(bytes) => {
+                    let keycodes_iter = bytes.utf8_chunks().flat_map(|chunk| {
+                        chunk
+                            .valid()
+                            .chars()
+                            .map(|c| KeyCode::from_char(c as u32).unwrap())
+                            .collect::<Vec<KeyCode>>()
+                    });
+                    let should_rerender = self.compositor.handle_keys(keycodes_iter).await;
+                    if should_rerender {
+                        self.render();
+                    }
+                }
                 Event::Resize(size) => {
+                    self.terminal
+                        .resize(Rect::new(0, 0, size.0, size.1))
+                        .unwrap();
+                    // resize the compositor which wil trigger a recalculation
+                    // and unconditional render
                     self.compositor.resize(size);
                     self.render();
                 }
@@ -111,8 +139,10 @@ impl<W: Write> App<W> {
         Ok(())
     }
 
-    #[inline(always)]
+    #[inline]
     fn render(&mut self) {
-        self.compositor.render();
+        self.terminal
+            .draw(|frame| self.compositor.render(frame.buffer_mut()))
+            .unwrap();
     }
 }

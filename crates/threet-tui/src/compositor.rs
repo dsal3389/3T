@@ -1,14 +1,18 @@
 // most of the code here is inspired by the helix editor
-use std::io::Write;
-
-use ratatui::TerminalOptions;
-use ratatui::Viewport;
 use ratatui::prelude::*;
 
+use crate::event::KeyCode;
 use crate::views::View;
 
 slotmap::new_key_type! {
     pub struct ViewId;
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub enum Mode {
+    Insert,
+    #[default]
+    Normal,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -20,6 +24,7 @@ pub enum Layout {
 struct Node {
     parent: ViewId,
     data: NodeData,
+    area: Rect,
 }
 
 impl Node {
@@ -27,6 +32,7 @@ impl Node {
         Node {
             parent: ViewId::default(),
             data: NodeData::View(NodeViewData::new(view)),
+            area: Rect::default(),
         }
     }
 
@@ -34,6 +40,7 @@ impl Node {
         Node {
             parent: ViewId::default(),
             data: NodeData::Container(NodeContainerData::new(layout)),
+            area: Rect::default(),
         }
     }
 }
@@ -44,22 +51,17 @@ enum NodeData {
 }
 
 struct NodeViewData {
-    area: Rect,
     view: Box<dyn View>,
 }
 
 impl NodeViewData {
     pub fn new(view: Box<dyn View>) -> Self {
-        Self {
-            area: Rect::default(),
-            view,
-        }
+        Self { view }
     }
 }
 
 struct NodeContainerData {
     childs: Vec<ViewId>,
-    area: Rect,
     layout: Layout,
 }
 
@@ -67,12 +69,13 @@ impl NodeContainerData {
     fn new(layout: Layout) -> Self {
         Self {
             childs: Vec::new(),
-            area: Rect::default(),
             layout,
         }
     }
 }
 
+/// use for area allocation for each views, parent nodes are containers with leaf nodes
+/// are view
 struct Tree {
     nodes: slotmap::HopSlotMap<ViewId, Node>,
     root: ViewId,
@@ -80,18 +83,12 @@ struct Tree {
 }
 
 impl Tree {
-    pub fn new(initial_size: (u16, u16)) -> Self {
+    pub fn new(area: Rect) -> Self {
         let mut nodes = slotmap::HopSlotMap::with_key();
-        let ctr = NodeContainerData {
-            childs: Vec::new(),
-            area: Rect::new(0, 0, initial_size.0, initial_size.1),
-            layout: Layout::Horizontal,
-        };
-        let root = nodes.insert(Node {
-            parent: ViewId::default(),
-            data: NodeData::Container(ctr),
-        });
+        let root = Node::container(Layout::Vertical);
+        let root = nodes.insert(root);
         nodes[root].parent = root;
+        nodes[root].area = area;
 
         Tree {
             nodes,
@@ -102,13 +99,14 @@ impl Tree {
 
     fn push(&mut self, view: Box<dyn View>) -> ViewId {
         let parent = self.nodes[self.focuse].parent;
-        let node = self.nodes.insert(Node {
-            parent,
-            data: NodeData::View(NodeViewData::new(view)),
-        });
+        let mut node = Node::view(view);
+        node.parent = parent;
+
+        let node = self.nodes.insert(node);
 
         match self.nodes[parent] {
             Node {
+                area,
                 data: NodeData::Container(ref mut ctr),
                 ..
             } => {
@@ -125,8 +123,6 @@ impl Tree {
                         + 1
                 };
                 ctr.childs.insert(position, node);
-
-                let area = ctr.area;
                 self.recalculate(parent, area);
             }
             _ => panic!("unexpected, node parent is not a container"),
@@ -136,54 +132,78 @@ impl Tree {
         node
     }
 
+    /// split the currently focused view into 2 with respect
+    /// to the given layout
     fn split(&mut self, view: Box<dyn View>, layout: Layout) {
         let parent = self.nodes[self.focuse].parent;
         let node = self.nodes.insert(Node::view(view));
 
-        match self.nodes[parent] {
+        let (ctr, area) = match self.nodes[parent] {
             Node {
+                area,
                 data: NodeData::Container(ref mut ctr),
                 ..
-            } => {
-                // NOTE: area is defined here because borrow checker nonsense
-                let area = ctr.area;
-
-                if ctr.layout == layout {
-                    let position = if ctr.childs.is_empty() {
-                        0
-                    } else {
-                        ctr.childs
-                            .iter()
-                            .position(|view_id| *view_id == self.focuse)
-                            .unwrap()
-                            + 1
-                    };
-                    ctr.childs.insert(position, node);
-                    self.nodes[node].parent = parent;
-                } else {
-                    // if the layout is different from the current
-                    // container, we need to create a new container with the new layout
-                    // and assign it as a child for the current container, the view will be a child
-                    // of the new created container
-                    let split_ctr = {
-                        let mut ctr = NodeContainerData::new(layout);
-                        ctr.childs.push(node);
-                        ctr
-                    };
-                    let split = Node {
-                        parent,
-                        data: NodeData::Container(split_ctr),
-                    };
-
-                    let split = self.nodes.insert(split);
-                    self.nodes[node].parent = split;
-                };
-
-                self.focuse = node;
-                self.recalculate(parent, area);
-            }
+            } => (ctr, area),
             _ => unreachable!(),
         };
+
+        // NOTE: area is defined here because borrow checker nonsense
+
+        if ctr.layout == layout {
+            let position = if ctr.childs.is_empty() {
+                0
+            } else {
+                ctr.childs
+                    .iter()
+                    .position(|view_id| *view_id == self.focuse)
+                    .unwrap()
+                    + 1
+            };
+            ctr.childs.insert(position, node);
+            self.nodes[node].parent = parent;
+        } else {
+            // if the layout is different from the current
+            // container, we need to create a new container with the new layout
+            // and assign it as a child for the current container, the view will be a child
+            // of the new created container
+            let mut split = Node::container(layout);
+            split.parent = parent;
+
+            let split = self.nodes.insert(split);
+            self.nodes[self.focuse].parent = split;
+            self.nodes[node].parent = split;
+
+            let ctr = match &mut self.nodes[split] {
+                Node {
+                    data: NodeData::Container(ctr),
+                    ..
+                } => ctr,
+                _ => unreachable!(),
+            };
+
+            ctr.childs.push(self.focuse);
+            ctr.childs.push(node);
+
+            let ctr = match &mut self.nodes[parent] {
+                Node {
+                    data: NodeData::Container(ctr),
+                    ..
+                } => ctr,
+                _ => unreachable!(),
+            };
+
+            let position = ctr
+                .childs
+                .iter()
+                .position(|view_id| *view_id == self.focuse)
+                .unwrap();
+
+            // replace the focuse child with the container
+            ctr.childs[position] = split;
+        };
+
+        self.focuse = node;
+        self.recalculate(parent, area);
     }
 
     /// remove the current focuse view
@@ -192,39 +212,70 @@ impl Tree {
     }
 
     #[inline]
+    fn get_focuse_mut(&mut self) -> &mut dyn View {
+        match self.nodes[self.focuse].data {
+            NodeData::View(NodeViewData { ref mut view, .. }) => view.as_mut(),
+            _ => unreachable!(),
+        }
+    }
+
+    fn get_container_mut(&mut self) -> &mut NodeContainerData {
+        let parent = self.nodes[self.focuse].parent;
+        match &mut self.nodes[parent] {
+            Node {
+                data: NodeData::Container(ctr),
+                ..
+            } => ctr,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline(always)]
     fn resize(&mut self, size: (u16, u16)) {
         self.recalculate(self.root, Rect::new(0, 0, size.0, size.1));
     }
 
-    /// recalculate areas from the given view node with the new area
+    /// recalculate areas from the given container node with the new area
     fn recalculate(&mut self, root: ViewId, area: Rect) {
         let mut stack = vec![(root, area)];
 
-        while let Some((node, area)) = stack.pop() {
+        while let Some((node, area_)) = stack.pop() {
             match &mut self.nodes[node] {
                 Node {
+                    area,
                     data: NodeData::Container(ctr),
                     ..
-                } => match ctr.layout {
-                    Layout::Horizontal => {
-                        ctr.area = area;
-                        let height = ctr.area.height / ctr.childs.len() as u16;
-                        let mut offset = ctr.area.y;
+                } => {
+                    *area = area_;
 
-                        for (i, child) in ctr.childs.iter().enumerate() {
-                            let area = Rect::new(0, offset, ctr.area.width, height);
-                            offset += height;
-                            stack.push((*child, area))
+                    match ctr.layout {
+                        Layout::Horizontal => {
+                            let height = area.height / ctr.childs.len() as u16;
+                            let mut offset = area.y;
+
+                            for (i, child) in ctr.childs.iter().enumerate() {
+                                let area = Rect::new(area.x, offset, area.width, height);
+                                stack.push((*child, area));
+                                offset += height;
+                            }
+                        }
+                        Layout::Vertical => {
+                            let width = area.width / ctr.childs.len() as u16;
+                            let mut offset = area.x;
+
+                            for (i, child) in ctr.childs.iter().enumerate() {
+                                let area = Rect::new(offset, area.y, width, area.height);
+                                stack.push((*child, area));
+                                offset += width;
+                            }
                         }
                     }
-                    Layout::Vertical => {
-                        todo!()
-                    }
-                },
+                }
                 Node {
+                    area,
                     data: NodeData::View(view),
                     ..
-                } => view.area = area,
+                } => *area = area_,
             }
         }
     }
@@ -248,14 +299,14 @@ struct TreeIter<'a> {
 }
 
 impl<'a> Iterator for TreeIter<'a> {
-    type Item = &'a NodeViewData;
+    type Item = (Rect, &'a NodeViewData);
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let view = self.stack.pop()?;
             let node = &self.tree.nodes[view];
 
             match &node.data {
-                NodeData::View(view) => return Some(view),
+                NodeData::View(view) => return Some((node.area, view)),
                 NodeData::Container(ctr) => {
                     self.stack.extend(&ctr.childs);
                 }
@@ -266,48 +317,52 @@ impl<'a> Iterator for TreeIter<'a> {
 
 /// the compositor is responsible to display and render requested
 /// views to the terminal
-pub struct Compositor<W: Write> {
+pub struct Compositor {
     tree: Tree,
-    terminal: Terminal<CrosstermBackend<W>>,
+    mode: Mode,
 }
 
-impl<W: Write> Compositor<W> {
-    pub fn new(stdout: W, size: (u16, u16)) -> Self {
-        let terminal = Terminal::with_options(
-            CrosstermBackend::new(stdout),
-            TerminalOptions {
-                viewport: Viewport::Fixed(Rect::new(0, 0, size.0, size.1)),
-            },
-        )
-        .unwrap();
-
+impl Compositor {
+    #[inline(always)]
+    pub fn new(area: Rect) -> Self {
         Self {
-            terminal,
-            tree: Tree::new(size),
+            tree: Tree::new(area),
+            mode: Mode::default(),
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn split_view(&mut self, view: Box<dyn View>, layout: Layout) {
         self.tree.split(view, layout);
     }
 
     /// resize the compositor viewport
-    #[inline]
+    #[inline(always)]
     pub fn resize(&mut self, size: (u16, u16)) {
-        self.terminal
-            .resize(Rect::new(0, 0, size.0, size.1))
-            .unwrap();
         self.tree.resize(size);
     }
 
-    pub fn render(&mut self) {
-        self.terminal
-            .draw(|frame| {
-                for view in &self.tree {
-                    view.view.render(view.area, frame.buffer_mut());
-                }
-            })
-            .unwrap();
+    /// will dispatch the returned keycodes by the generator to
+    /// the focused view one after the other
+    pub async fn handle_keys<I>(&mut self, keycodes: I) -> bool
+    where
+        I: Iterator<Item = KeyCode>,
+    {
+        let node = self.tree.get_focuse_mut();
+        let mut should_rerender = false;
+
+        for keycode in keycodes {
+            should_rerender = node.handle_key(keycode).await || should_rerender;
+        }
+        should_rerender
+    }
+
+    /// renders the views into the given buffer, compositor doesn't accept area because
+    /// it will use whatever it has calculated in the tree
+    #[inline(always)]
+    pub fn render(&mut self, buffer: &mut Buffer) {
+        for (area, view) in &self.tree {
+            view.view.render(area, buffer);
+        }
     }
 }

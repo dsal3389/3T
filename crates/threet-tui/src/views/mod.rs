@@ -2,6 +2,7 @@ use std::ops::Deref;
 
 use async_trait::async_trait;
 use ratatui::prelude::*;
+use tokio::sync::mpsc::Sender;
 
 mod authenticate;
 mod chat;
@@ -9,9 +10,8 @@ mod chat;
 pub use authenticate::AuthenticateView;
 pub use chat::ChatView;
 
+use crate::event::Event;
 use crate::event::KeyCode;
-
-pub type ViewId = String;
 
 /// each view has a single focuse area, users can change their focuse
 /// usually when they are in Normal mode via TAB | j | k keys, this iterator
@@ -99,4 +99,12 @@ pub trait View: Send + 'static {
 
     /// called on every tick so the view can update its internal state
     async fn tick(&mut self) {}
+}
+
+pub struct ViewContext {
+    event_sender: Sender<Event>,
+}
+
+pub struct View_ {
+    event_sender: Sender<Event>,
 }

@@ -15,7 +15,7 @@ pub enum KeyCode {
 }
 
 impl KeyCode {
-    pub fn from_u32(value: u32) -> Option<Self> {
+    pub fn from_char(value: u32) -> Option<Self> {
         match value {
             0x1b => Some(KeyCode::Esc),
             0x7f => Some(KeyCode::Backspace),
