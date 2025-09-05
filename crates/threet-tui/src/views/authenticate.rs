@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use async_trait::async_trait;
 use ratatui::layout::Constraint;
 use ratatui::layout::Layout;
 use ratatui::prelude::*;
@@ -18,7 +19,6 @@ use crate::event::Event;
 use crate::event::KeyCode;
 use crate::notifications::Notification;
 use crate::utils::get_middle_area;
-use crate::views::ViewKind;
 use crate::widgets::ButtonWidget;
 use crate::widgets::Field;
 use crate::widgets::FieldBuilder;
@@ -120,7 +120,6 @@ impl AuthenticateView {
                 match User::by_username_password(get_database(), &username, &password).await {
                     Some(user) => {
                         app_tx.send(Event::SetUser(user)).await.unwrap();
-                        app_tx.send(Event::SetView(ViewKind::Chat)).await.unwrap();
                     }
                     None => {
                         let notification = Notification::error(
@@ -147,6 +146,7 @@ impl AuthenticateView {
     }
 }
 
+#[async_trait]
 impl View for AuthenticateView {
     #[inline]
     fn name(&self) -> &str {

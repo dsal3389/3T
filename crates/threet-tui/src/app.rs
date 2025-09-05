@@ -2,8 +2,6 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ratatui::TerminalOptions;
-use ratatui::Viewport;
 use ratatui::prelude::*;
 use threet_storage::models::User;
 
@@ -14,20 +12,21 @@ use tokio::sync::mpsc::channel;
 use tokio::time::MissedTickBehavior;
 use tokio::time::interval;
 
+use crate::compositor::Compositor;
+use crate::compositor::Layout;
 use crate::event::Event;
 use crate::event::KeyCode;
 use crate::notifications::NotificationServiceWidget;
-use crate::views::AppView;
 use crate::views::AuthenticateView;
 use crate::views::ChatView;
 use crate::views::View;
-use crate::views::ViewKind;
 use crate::widgets::StatusWidget;
 
 pub struct App<W: Write> {
     events: Receiver<Event>,
     events_sender: Sender<Event>,
-    terminal: Terminal<CrosstermBackend<W>>,
+
+    compositor: Compositor<W>,
 
     // the app notification service for displaying notifications
     // to the user, this service is independent of the view, currently
@@ -36,7 +35,6 @@ pub struct App<W: Write> {
 
     // defines the authenticated user for the current app
     user: Option<User>,
-    view: AppView,
 }
 
 impl<W: Write> App<W> {
@@ -45,30 +43,29 @@ impl<W: Write> App<W> {
     /// to insert events to the app from outside
     pub fn new(stdout: W, size: (u16, u16)) -> (Self, Sender<Event>) {
         let (app_tx, app_rx) = channel(1);
-        let terminal = Terminal::with_options(
-            CrosstermBackend::new(stdout),
-            TerminalOptions {
-                viewport: Viewport::Fixed(Rect::new(0, 0, size.0, size.1)),
-            },
-        )
-        .unwrap();
-        let view = AuthenticateView::new(app_tx.clone());
+        let mut compositor = Compositor::new(stdout, size);
+
+        compositor.split_view(
+            Box::new(AuthenticateView::new(app_tx.clone())),
+            Layout::Horizontal,
+        );
+        compositor.split_view(
+            Box::new(AuthenticateView::new(app_tx.clone())),
+            Layout::Horizontal,
+        );
+
         let app = App {
-            terminal,
             events: app_rx,
             events_sender: app_tx.clone(),
             notifications: NotificationServiceWidget::new(app_tx.clone()),
-            view: AppView::Authenticate(view),
             user: None,
+            compositor,
         };
         (app, app_tx)
     }
 
     pub async fn run(mut self) -> anyhow::Result<()> {
         // initial unconditiond application render
-        self.terminal
-            .clear()
-            .expect("couldn't clear terminal screen");
         self.render();
 
         // a boolean value indicating if the tick event was comsumed, the tick
@@ -103,88 +100,19 @@ impl<W: Write> App<W> {
 
         while let Some(event) = self.events.recv().await {
             match event {
-                Event::Tick => {
-                    self.view.tick().await;
-                    self.notifications.tick().await;
-
-                    let mut tick_consumed = tick_consumed.lock().await;
-                    *tick_consumed = true;
+                Event::Resize(size) => {
+                    self.compositor.resize(size);
+                    self.render();
                 }
                 Event::Render => self.render(),
-                Event::Resize((width, height)) => {
-                    self.terminal
-                        .resize(Rect::new(0, 0, width, height))
-                        .unwrap();
-                    self.render();
-                }
-                Event::Stdin(data) => {
-                    let stdin = match String::from_utf8(data) {
-                        Ok(string) => string,
-                        Err(err) => {
-                            log::warn!("issue converting received bytes to utf-8 {}", err);
-                            continue;
-                        }
-                    };
-
-                    let mut should_rerender = false;
-
-                    // we iterate over each char because the view
-                    // needs to handle each character separatly
-                    for c in stdin.chars() {
-                        let Some(keycode) = KeyCode::from_u32(c as u32) else {
-                            continue;
-                        };
-                        should_rerender = self.view.handle_key(keycode).await || should_rerender;
-                    }
-
-                    if should_rerender {
-                        self.render();
-                    }
-                }
-                Event::Notification((notification, duration)) => {
-                    self.notifications.push_notification(notification, duration);
-                    self.render();
-                }
-                Event::SetView(view_kind) => {
-                    self.set_view(view_kind);
-                    self.render();
-                }
-                Event::SetUser(user) => self.user = Some(user),
+                _ => {}
             };
         }
         Ok(())
     }
 
+    #[inline(always)]
     fn render(&mut self) {
-        self.terminal
-            .draw(|frame| {
-                let [view_area, status_area] =
-                    Layout::vertical([Constraint::Fill(1), Constraint::Length(1)])
-                        .areas(frame.area());
-
-                frame.render_widget(&self.view, view_area);
-                frame.render_widget(
-                    StatusWidget::new(self.view.name(), self.view.mode()),
-                    status_area,
-                );
-
-                if self.notifications.should_render() {
-                    // we render the notifications only after all the other widgets are drawn
-                    // because the notification should be at the top of all widgets
-                    frame.render_widget(&self.notifications, view_area);
-                }
-            })
-            .unwrap();
-    }
-
-    fn set_view(&mut self, view_kind: ViewKind) {
-        match view_kind {
-            ViewKind::Authenticate => {
-                todo!()
-            }
-            ViewKind::Chat => {
-                self.view = AppView::Chat(ChatView::new());
-            }
-        }
+        self.compositor.render();
     }
 }

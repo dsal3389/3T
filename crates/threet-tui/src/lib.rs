@@ -1,4 +1,5 @@
 mod app;
+mod compositor;
 mod event;
 mod notifications;
 mod utils;

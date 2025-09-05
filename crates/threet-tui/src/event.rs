@@ -3,7 +3,6 @@ use std::time::Duration;
 use threet_storage::models::User;
 
 use crate::notifications::Notification;
-use crate::views::ViewKind;
 
 #[derive(Debug, Clone)]
 pub enum KeyCode {
@@ -56,12 +55,6 @@ pub enum Event {
     /// push a new notification to the app instance to display
     /// to the user
     Notification((Notification, Duration)),
-
-    /// set different view for the app, the app knows how to initialize
-    /// the specifically requested view, the enum to pass the view itself because
-    /// the event setter doesn't need to know how to create the view and we don't
-    /// want to constraint to view to must implemnet `Send` and `Sync`
-    SetView(ViewKind),
 
     /// allow setting the user from outside the application
     /// or from a view

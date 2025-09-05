@@ -1,3 +1,5 @@
+use async_trait::async_trait;
+
 use super::View;
 use super::ViewMode;
 use crate::event::KeyCode;
@@ -14,6 +16,7 @@ impl ChatView {
     }
 }
 
+#[async_trait]
 impl View for ChatView {
     fn name(&self) -> &str {
         "chat"

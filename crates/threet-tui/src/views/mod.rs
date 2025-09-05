@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+use async_trait::async_trait;
 use ratatui::prelude::*;
 
 mod authenticate;
@@ -9,6 +10,8 @@ pub use authenticate::AuthenticateView;
 pub use chat::ChatView;
 
 use crate::event::KeyCode;
+
+pub type ViewId = String;
 
 /// each view has a single focuse area, users can change their focuse
 /// usually when they are in Normal mode via TAB | j | k keys, this iterator
@@ -75,7 +78,8 @@ pub enum ViewMode {
 
 /// the view is the one who controls the mode, what key binds there are
 /// what to display and where
-pub trait View {
+#[async_trait]
+pub trait View: Send + 'static {
     /// the view name
     fn name(&self) -> &str;
 
@@ -95,58 +99,4 @@ pub trait View {
 
     /// called on every tick so the view can update its internal state
     async fn tick(&mut self) {}
-}
-
-/// since the `AppView` is just a container of all type of `Views`
-/// it gets repeatitive match each type and calling the method
-/// on the type
-macro_rules! proxy_view_call {
-    ($self: expr, $($call: tt)*) => {
-        match $self {
-            AppView::Authenticate(view) => view.$($call)*,
-            AppView::Chat(view) => view.$($call)*,
-        }
-    };
-}
-
-#[derive(Debug, Clone)]
-pub enum ViewKind {
-    Authenticate,
-    Chat,
-}
-
-pub enum AppView {
-    Authenticate(AuthenticateView),
-    Chat(ChatView),
-}
-
-impl View for AppView {
-    fn name(&self) -> &str {
-        proxy_view_call!(self, name())
-    }
-
-    fn mode(&self) -> ViewMode {
-        proxy_view_call!(self, mode())
-    }
-
-    fn render(&self, area: Rect, buf: &mut Buffer) {
-        proxy_view_call!(self, render(area, buf));
-    }
-
-    async fn handle_key(&mut self, keycode: KeyCode) -> bool {
-        proxy_view_call!(self, handle_key(keycode).await)
-    }
-
-    async fn tick(&mut self) {
-        proxy_view_call!(self, tick().await)
-    }
-}
-
-impl Widget for &AppView {
-    fn render(self, area: Rect, buf: &mut Buffer)
-    where
-        Self: Sized,
-    {
-        View::render(self, area, buf);
-    }
 }
