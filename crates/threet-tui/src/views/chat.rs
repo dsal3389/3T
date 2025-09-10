@@ -1,18 +1,18 @@
+use std::sync::LazyLock;
+
 use async_trait::async_trait;
 
+use super::HandlekeysResults;
 use super::View;
-use super::ViewMode;
-use crate::event::KeyCode;
 
-pub struct ChatView {
-    mode: ViewMode,
-}
+use crate::combo::Combo;
+use crate::event::Key;
+
+pub struct ChatView {}
 
 impl ChatView {
     pub fn new() -> Self {
-        ChatView {
-            mode: ViewMode::default(),
-        }
+        ChatView {}
     }
 }
 
@@ -22,13 +22,9 @@ impl View for ChatView {
         "chat"
     }
 
-    fn mode(&self) -> ViewMode {
-        self.mode.clone()
-    }
-
     fn render(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {}
 
-    async fn handle_key(&mut self, keycode: KeyCode) -> bool {
-        false
+    async fn handle_keys<'a>(&mut self, key: &[Key]) -> HandlekeysResults<'a> {
+        HandlekeysResults::None
     }
 }

@@ -1,18 +1,15 @@
 // most of the code here is inspired by the helix editor
 use ratatui::prelude::*;
+use ratatui::widgets::Block;
 
-use crate::event::KeyCode;
+use crate::app::AppContext;
+use crate::combo::ComboCallback;
+use crate::event::Key;
+use crate::views::HandlekeysResults;
 use crate::views::View;
 
 slotmap::new_key_type! {
     pub struct ViewId;
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub enum Mode {
-    Insert,
-    #[default]
-    Normal,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -212,6 +209,14 @@ impl Tree {
     }
 
     #[inline]
+    fn get_focuse(&self) -> &dyn View {
+        match self.nodes[self.focuse].data {
+            NodeData::View(NodeViewData { ref view, .. }) => view.as_ref(),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
     fn get_focuse_mut(&mut self) -> &mut dyn View {
         match self.nodes[self.focuse].data {
             NodeData::View(NodeViewData { ref mut view, .. }) => view.as_mut(),
@@ -315,11 +320,14 @@ impl<'a> Iterator for TreeIter<'a> {
     }
 }
 
+pub struct Context<'app> {
+    pub app: AppContext<'app>,
+}
+
 /// the compositor is responsible to display and render requested
 /// views to the terminal
 pub struct Compositor {
     tree: Tree,
-    mode: Mode,
 }
 
 impl Compositor {
@@ -327,7 +335,6 @@ impl Compositor {
     pub fn new(area: Rect) -> Self {
         Self {
             tree: Tree::new(area),
-            mode: Mode::default(),
         }
     }
 
@@ -342,19 +349,25 @@ impl Compositor {
         self.tree.resize(size);
     }
 
+    #[inline(always)]
+    pub fn current_view(&self) -> &dyn View {
+        self.tree.get_focuse()
+    }
+
     /// will dispatch the returned keycodes by the generator to
     /// the focused view one after the other
-    pub async fn handle_keys<I>(&mut self, keycodes: I) -> bool
-    where
-        I: Iterator<Item = KeyCode>,
-    {
-        let node = self.tree.get_focuse_mut();
-        let mut should_rerender = false;
-
-        for keycode in keycodes {
-            should_rerender = node.handle_key(keycode).await || should_rerender;
-        }
-        should_rerender
+    pub async fn handle_keys(&mut self, keys: &[Key], mut cx: AppContext<'_>) -> bool {
+        let view = self.tree.get_focuse_mut();
+        match view.handle_keys(keys).await {
+            HandlekeysResults::Callback(callback) => {
+                let callback = *callback;
+                callback(&mut cx).await;
+            }
+            HandlekeysResults::None => {
+                println!("nothing..");
+            }
+        };
+        true
     }
 
     /// renders the views into the given buffer, compositor doesn't accept area because
@@ -362,7 +375,12 @@ impl Compositor {
     #[inline(always)]
     pub fn render(&mut self, buffer: &mut Buffer) {
         for (area, view) in &self.tree {
-            view.view.render(area, buffer);
+            let block = Block::bordered();
+            let inner_area = block.inner(area);
+
+            // TODO: show lines instead of blocks
+            block.render(area, buffer);
+            view.view.render(inner_area, buffer);
         }
     }
 }

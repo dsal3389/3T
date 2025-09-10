@@ -18,13 +18,28 @@ use tokio::time::interval;
 use crate::compositor::Compositor;
 use crate::compositor::Layout;
 use crate::event::Event;
+use crate::event::Key;
 use crate::event::KeyCode;
 use crate::views::AuthenticateView;
+
+#[derive(Debug, Clone, Copy)]
+pub enum Mode {
+    Insert,
+    Normal,
+}
+
+/// App context is used to passed to the compositor, and the
+/// compositor will pass the app context to the currently focused view
+pub struct AppContext<'a> {
+    dispatcher: Sender<Event>,
+    user: Option<&'a User>,
+}
 
 pub struct App<W: Write> {
     events: Receiver<Event>,
     events_sender: Sender<Event>,
     terminal: Terminal<CrosstermBackend<W>>,
+    mode: Mode,
 
     compositor: Compositor,
 
@@ -58,15 +73,11 @@ impl<W: Write> App<W> {
             Layout::Vertical,
         );
 
-        compositor.split_view(
-            Box::new(AuthenticateView::new(app_tx.clone())),
-            Layout::Horizontal,
-        );
-
         let app = App {
             events: app_rx,
             events_sender: app_tx.clone(),
             user: None,
+            mode: Mode::Normal,
             compositor,
             terminal,
         };
@@ -111,14 +122,25 @@ impl<W: Write> App<W> {
         while let Some(event) = self.events.recv().await {
             match event {
                 Event::Stdin(bytes) => {
-                    let keycodes_iter = bytes.utf8_chunks().flat_map(|chunk| {
-                        chunk
-                            .valid()
-                            .chars()
-                            .map(|c| KeyCode::from_char(c as u32).unwrap())
-                            .collect::<Vec<KeyCode>>()
-                    });
-                    let should_rerender = self.compositor.handle_keys(keycodes_iter).await;
+                    let keys: Vec<Key> = bytes
+                        .utf8_chunks()
+                        .flat_map(|chunk| {
+                            chunk
+                                .valid()
+                                .chars()
+                                .inspect(|c| println!("c {} {:x}", c, *c as u32))
+                                .map(|c| KeyCode::from_char(c as u32).unwrap())
+                                // this is for quick fix until
+                                // a good `Key` implementation is made
+                                .map(|keycode| keycode.into())
+                                .collect::<Vec<Key>>()
+                        })
+                        .collect();
+                    let cx = AppContext {
+                        dispatcher: self.events_sender.clone(),
+                        user: self.user.as_ref(),
+                    };
+                    let should_rerender = self.compositor.handle_keys(keys.as_slice(), cx).await;
                     if should_rerender {
                         self.render();
                     }
