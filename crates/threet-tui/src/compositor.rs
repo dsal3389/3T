@@ -360,7 +360,6 @@ impl Compositor {
         let view = self.tree.get_focuse_mut();
         match view.handle_keys(keys).await {
             HandlekeysResults::Callback(callback) => {
-                let callback = *callback;
                 callback(&mut cx).await;
             }
             HandlekeysResults::None => {

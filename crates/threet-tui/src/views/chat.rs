@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use super::HandlekeysResults;
 use super::View;
 
-use crate::combo::Combo;
+use crate::combo::ComboRegister;
 use crate::event::Key;
 
 pub struct ChatView {}

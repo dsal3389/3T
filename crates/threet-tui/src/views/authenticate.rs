@@ -19,7 +19,7 @@ use threet_storage::get_database;
 use threet_storage::models::User;
 
 use crate::app::AppContext;
-use crate::combo::Combo;
+use crate::combo::ComboRegister;
 use crate::event::Event;
 use crate::event::Key;
 use crate::notifications::Notification;
@@ -34,8 +34,8 @@ use super::FocuseIterator;
 use super::HandlekeysResults;
 use super::View;
 
-static COMBOS: LazyLock<Combo> = LazyLock::new(|| {
-    let mut combos = Combo::new();
+static COMBOS: LazyLock<ComboRegister> = LazyLock::new(|| {
+    let mut combos = ComboRegister::new();
     combos.add(vec![Key::from_utf8(&[0x61])], add_window);
     combos
 });

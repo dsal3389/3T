@@ -10,9 +10,7 @@ mod chat;
 pub use authenticate::AuthenticateView;
 pub use chat::ChatView;
 
-use crate::combo::Combo;
 use crate::combo::ComboCallback;
-use crate::event::Event;
 use crate::event::Key;
 
 /// each view has a single focuse area, users can change their focuse

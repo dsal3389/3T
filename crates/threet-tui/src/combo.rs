@@ -13,12 +13,12 @@ macro_rules! combos {
 
 /// a node that represent a key in a path, or an action
 #[derive(Default)]
-struct Node {
-    entries: BTreeMap<Key, Node>,
+struct Combo {
+    entries: BTreeMap<Key, Combo>,
     callback: Option<ComboCallback>,
 }
 
-impl Node {
+impl Combo {
     fn add<I>(&mut self, mut combo: I, callback: ComboCallback)
     where
         I: Iterator<Item = Key>,
@@ -33,6 +33,7 @@ impl Node {
         };
     }
 
+    /// get the callback based on the given iterator next value
     fn get<I>(&self, mut keys: I) -> Option<&ComboCallback>
     where
         I: Iterator<Item = Key>,
@@ -45,17 +46,18 @@ impl Node {
 }
 
 #[repr(transparent)]
-pub struct Combo {
-    root: Node,
+pub struct ComboRegister {
+    root: Combo,
 }
 
-impl Combo {
+impl ComboRegister {
     pub fn new() -> Self {
         Self {
-            root: Node::default(),
+            root: Combo::default(),
         }
     }
 
+    /// add a combo to the combo register
     #[inline(always)]
     pub fn add<I>(&mut self, keys: I, callback: ComboCallback)
     where
