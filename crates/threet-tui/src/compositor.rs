@@ -71,8 +71,12 @@ impl NodeContainerData {
     }
 }
 
-/// use for area allocation for each views, parent nodes are containers with leaf nodes
-/// are view
+/// the `Tree` type represents the parent child heirarchy for panels, parent nodes
+/// are the containers, while the leaf nodes are the actual views which can also be another container,
+///
+/// the parent container assign to the leaf an area, with respect to the other leafs, if the leaf node is a view
+/// it will just render its content to the view, if the leaf node is also a container, it will divide the given
+/// area to its own leafs etc...
 struct Tree {
     nodes: slotmap::HopSlotMap<ViewId, Node>,
     root: ViewId,
@@ -143,8 +147,6 @@ impl Tree {
             } => (ctr, area),
             _ => unreachable!(),
         };
-
-        // NOTE: area is defined here because borrow checker nonsense
 
         if ctr.layout == layout {
             let position = if ctr.childs.is_empty() {
@@ -276,6 +278,8 @@ impl Tree {
                         }
                     }
                 }
+                // for node view, we will just update the area
+                // with the new calculated one by the parent
                 Node {
                     area,
                     data: NodeData::View(view),
@@ -320,12 +324,14 @@ impl<'a> Iterator for TreeIter<'a> {
     }
 }
 
-pub struct Context<'app> {
-    pub app: AppContext<'app>,
+pub struct Context<'a> {
+    pub app: AppContext<'a>,
+    pub compositor: &'a mut Compositor,
 }
 
 /// the compositor is responsible to display and render requested
 /// views to the terminal
+#[repr(transparent)]
 pub struct Compositor {
     tree: Tree,
 }
@@ -339,7 +345,7 @@ impl Compositor {
     }
 
     #[inline(always)]
-    pub fn split_view(&mut self, view: Box<dyn View>, layout: Layout) {
+    pub fn split_view(&mut self, view: Box<dyn View + Sync + 'static>, layout: Layout) {
         self.tree.split(view, layout);
     }
 
@@ -356,11 +362,16 @@ impl Compositor {
 
     /// will dispatch the returned keycodes by the generator to
     /// the focused view one after the other
-    pub async fn handle_keys(&mut self, keys: &[Key], mut cx: AppContext<'_>) -> bool {
+    pub async fn handle_keys(&mut self, keys: &[Key], app: AppContext<'_>) -> bool {
         let view = self.tree.get_focuse_mut();
+
         match view.handle_keys(keys).await {
             HandlekeysResults::Callback(callback) => {
-                callback(&mut cx).await;
+                let cx = Context {
+                    app,
+                    compositor: self,
+                };
+                callback(cx).await;
             }
             HandlekeysResults::None => {
                 println!("nothing..");

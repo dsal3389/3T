@@ -6,20 +6,18 @@ use async_trait::async_trait;
 use ratatui::layout::Constraint;
 use ratatui::layout::Layout;
 use ratatui::prelude::*;
-use ratatui::style::Styled;
 use ratatui::text::ToLine;
 use ratatui::widgets::Block;
 use ratatui::widgets::Padding;
 use ratatui::widgets::Paragraph;
-use ratatui::widgets::canvas::Label;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 
 use threet_storage::get_database;
 use threet_storage::models::User;
 
-use crate::app::AppContext;
 use crate::combo::ComboRegister;
+use crate::compositor::Context;
 use crate::event::Event;
 use crate::event::Key;
 use crate::notifications::Notification;
@@ -40,9 +38,12 @@ static COMBOS: LazyLock<ComboRegister> = LazyLock::new(|| {
     combos
 });
 
-fn add_window(cx: &AppContext<'_>) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> {
+fn add_window<'a>(cx: Context<'a>) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
     Box::pin(async move {
-        println!("called");
+        cx.compositor.split_view(
+            Box::new(AuthenticateView::new(cx.app.dispatcher)),
+            crate::compositor::Layout::Vertical,
+        );
     })
 }
 

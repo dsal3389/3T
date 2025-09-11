@@ -1,15 +1,12 @@
 use std::collections::BTreeMap;
 use std::pin::Pin;
 
-use crate::app::AppContext;
+use crate::compositor::Context;
 use crate::event::Key;
 
-pub type ComboCallback = fn(&AppContext) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
-
-// TODO
-macro_rules! combos {
-    ($($($key:expr)* => callback:tt),*) => {};
-}
+// lifetime: the returned future is bounded to the `Context` lifetime, it is possible because we don't
+// hand this callback over to `tokio::spawn` which would have required us to have `'static` lifetime
+pub type ComboCallback = fn(Context<'_>) -> Pin<Box<dyn '_ + Future<Output = ()> + Send>>;
 
 /// a node that represent a key in a path, or an action
 #[derive(Default)]

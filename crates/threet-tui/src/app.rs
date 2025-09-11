@@ -31,8 +31,9 @@ pub enum Mode {
 /// App context is used to passed to the compositor, and the
 /// compositor will pass the app context to the currently focused view
 pub struct AppContext<'a> {
-    dispatcher: Sender<Event>,
-    user: Option<&'a User>,
+    pub dispatcher: Sender<Event>,
+    pub user: Option<&'a User>,
+    pub mode: Mode,
 }
 
 pub struct App<W: Write> {
@@ -64,10 +65,6 @@ impl<W: Write> App<W> {
 
         let mut compositor = Compositor::new(area);
 
-        compositor.split_view(
-            Box::new(AuthenticateView::new(app_tx.clone())),
-            Layout::Vertical,
-        );
         compositor.split_view(
             Box::new(AuthenticateView::new(app_tx.clone())),
             Layout::Vertical,
@@ -139,6 +136,7 @@ impl<W: Write> App<W> {
                     let cx = AppContext {
                         dispatcher: self.events_sender.clone(),
                         user: self.user.as_ref(),
+                        mode: self.mode,
                     };
                     let should_rerender = self.compositor.handle_keys(keys.as_slice(), cx).await;
                     if should_rerender {

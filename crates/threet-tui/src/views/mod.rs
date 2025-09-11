@@ -1,5 +1,4 @@
 use std::ops::Deref;
-use std::sync::LazyLock;
 
 use async_trait::async_trait;
 use ratatui::prelude::*;
@@ -8,7 +7,6 @@ mod authenticate;
 mod chat;
 
 pub use authenticate::AuthenticateView;
-pub use chat::ChatView;
 
 use crate::combo::ComboCallback;
 use crate::event::Key;
