@@ -7,43 +7,18 @@ use crate::notifications::Notification;
 
 #[derive(Debug, Clone, Hash, Eq, Ord, PartialOrd, PartialEq)]
 pub enum KeyCode {
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
     Backspace,
     Enter,
     Space,
     Tab,
     Esc,
     Char(char),
-}
-
-impl KeyCode {
-    pub fn from_char(value: u32) -> Option<Self> {
-        match value {
-            0x1b => Some(KeyCode::Esc),
-            0x7f => Some(KeyCode::Backspace),
-            0x9 => Some(KeyCode::Tab),
-            0x20 => Some(KeyCode::Space),
-            0xd | 0xa => Some(KeyCode::Enter),
-            _ => char::from_u32(value).map(|c| KeyCode::Char(c)),
-        }
-    }
-}
-
-impl From<KeyCode> for char {
-    fn from(value: KeyCode) -> Self {
-        let code = match value {
-            KeyCode::Backspace => 0x7f as u32,
-            KeyCode::Esc => 0x1b as u32,
-            KeyCode::Tab => 0x9 as u32,
-            KeyCode::Enter => 0xd as u32,
-            KeyCode::Space => return ' ',
-            KeyCode::Char(c) => return c,
-        };
-
-        // safety: this should be safe because `KeyCode` can be created
-        // only from a valid char, and we control in the match case
-        // what is the ascii `code`
-        unsafe { char::from_u32_unchecked(code) }
-    }
 }
 
 #[repr(transparent)]
@@ -77,8 +52,8 @@ impl std::ops::BitAnd for Modifier {
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Key {
-    keycode: KeyCode,
-    modifiers: Modifier,
+    pub keycode: KeyCode,
+    pub modifiers: Modifier,
 }
 
 impl Key {
@@ -97,6 +72,65 @@ impl Key {
         Key {
             keycode,
             modifiers: Modifier::NONE,
+        }
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Key> {
+        if bytes.is_empty() {
+            return None;
+        }
+
+        match bytes[0] {
+            b'\x1b' => {
+                if bytes.len() == 1 {
+                    Some(KeyCode::Esc.into())
+                } else {
+                    if bytes[1] == b'[' {
+                        if bytes.len() == 2 {
+                            None
+                        } else {
+                            match bytes[2] {
+                                b'D' => Some(KeyCode::Left.into()),
+                                b'C' => Some(KeyCode::Right.into()),
+                                b'A' => Some(KeyCode::Up.into()),
+                                b'B' => Some(KeyCode::Down.into()),
+                                b'H' => Some(KeyCode::Home.into()),
+                                b'F' => Some(KeyCode::End.into()),
+                                _ => None,
+                            }
+                        }
+                    } else {
+                        None
+                    }
+                }
+            }
+            b'\r' => Some(KeyCode::Enter.into()),
+            b'\t' => Some(KeyCode::Tab.into()),
+            0x7f => Some(KeyCode::Backspace.into()),
+            0x0 => Some(Key {
+                keycode: KeyCode::Enter,
+                modifiers: Modifier::CTRL,
+            }),
+            c @ 0x1..=0x1a => Some(Key {
+                keycode: KeyCode::Char((c - 0x1 + b'a') as char),
+                modifiers: Modifier::CTRL,
+            }),
+            c @ 0x1c..=0x1f => Some(Key {
+                keycode: KeyCode::Char((c - 0x1c + b'4') as char),
+                modifiers: Modifier::CTRL,
+            }),
+            _ => {
+                let chars = str::from_utf8(bytes).ok()?;
+                let first = chars.chars().next()?;
+                if first.is_uppercase() {
+                    Some(Key {
+                        keycode: KeyCode::Char(first),
+                        modifiers: Modifier::SHIFT,
+                    })
+                } else {
+                    Some(KeyCode::Char(first).into())
+                }
+            }
         }
     }
 }

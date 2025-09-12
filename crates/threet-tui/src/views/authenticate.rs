@@ -16,8 +16,8 @@ use tokio::task::JoinHandle;
 use threet_storage::get_database;
 use threet_storage::models::User;
 
+use crate::app::Context;
 use crate::combo::ComboRegister;
-use crate::compositor::Context;
 use crate::event::Event;
 use crate::event::Key;
 use crate::notifications::Notification;
@@ -41,9 +41,10 @@ static COMBOS: LazyLock<ComboRegister> = LazyLock::new(|| {
 fn add_window<'a>(cx: Context<'a>) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
     Box::pin(async move {
         cx.compositor.split_view(
-            Box::new(AuthenticateView::new(cx.app.dispatcher)),
+            Box::new(AuthenticateView::new(cx.dispatcher.clone())),
             crate::compositor::Layout::Vertical,
         );
+        cx.dispatcher.send(Event::Render).await.unwrap();
     })
 }
 

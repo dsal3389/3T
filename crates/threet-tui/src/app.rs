@@ -15,12 +15,15 @@ use tokio::sync::mpsc::channel;
 use tokio::time::MissedTickBehavior;
 use tokio::time::interval;
 
+use crate::combo::ComboCallback;
+use crate::combo::ComboRecorder;
 use crate::compositor::Compositor;
 use crate::compositor::Layout;
 use crate::event::Event;
 use crate::event::Key;
 use crate::event::KeyCode;
 use crate::views::AuthenticateView;
+use crate::views::HandlekeysResults;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
@@ -28,9 +31,10 @@ pub enum Mode {
     Normal,
 }
 
-/// App context is used to passed to the compositor, and the
+/// context is used to passed to the compositor, and the
 /// compositor will pass the app context to the currently focused view
-pub struct AppContext<'a> {
+pub struct Context<'a> {
+    pub compositor: &'a mut Compositor,
     pub dispatcher: Sender<Event>,
     pub user: Option<&'a User>,
     pub mode: Mode,
@@ -44,7 +48,13 @@ pub struct App<W: Write> {
 
     compositor: Compositor,
 
-    // defines the authenticated user for the current app
+    /// vector of the current keys pressed by the user
+    /// to match with the combo, this vector is filled when
+    /// the app mode is in `Normal` and the vector is emptied
+    /// when a `ESC` key is recieved
+    recorder: ComboRecorder,
+
+    /// defines the authenticated user for the current app
     user: Option<User>,
 }
 
@@ -73,6 +83,7 @@ impl<W: Write> App<W> {
         let app = App {
             events: app_rx,
             events_sender: app_tx.clone(),
+            recorder: ComboRecorder::new(),
             user: None,
             mode: Mode::Normal,
             compositor,
@@ -119,34 +130,35 @@ impl<W: Write> App<W> {
         while let Some(event) = self.events.recv().await {
             match event {
                 Event::Stdin(bytes) => {
-                    let keys: Vec<Key> = bytes
-                        .utf8_chunks()
-                        .flat_map(|chunk| {
-                            chunk
-                                .valid()
-                                .chars()
-                                .inspect(|c| println!("c {} {:x}", c, *c as u32))
-                                .map(|c| KeyCode::from_char(c as u32).unwrap())
-                                // this is for quick fix until
-                                // a good `Key` implementation is made
-                                .map(|keycode| keycode.into())
-                                .collect::<Vec<Key>>()
-                        })
-                        .collect();
-                    let cx = AppContext {
-                        dispatcher: self.events_sender.clone(),
-                        user: self.user.as_ref(),
-                        mode: self.mode,
+                    let Some(key) = Key::from_bytes(bytes.as_slice()) else {
+                        continue;
                     };
-                    let should_rerender = self.compositor.handle_keys(keys.as_slice(), cx).await;
-                    if should_rerender {
-                        self.render();
+                    self.recorder.extend([key; 1]);
+
+                    let view = self.compositor.current_view_mut();
+
+                    match view.handle_keys(self.recorder.as_ref()).await {
+                        HandlekeysResults::Callback(callback) => {
+                            let cx = Context {
+                                dispatcher: self.events_sender.clone(),
+                                compositor: &mut self.compositor,
+                                user: self.user.as_ref(),
+                                mode: self.mode,
+                            };
+                            callback(cx).await;
+                        }
+                        _ => {}
                     }
                 }
-                Event::Resize(size) => {
+                Event::Resize(mut size) => {
                     self.terminal
                         .resize(Rect::new(0, 0, size.0, size.1))
                         .unwrap();
+
+                    // reduce 1 from the area hight because the app will use that line
+                    // to render the status bar
+                    size.1 -= 1;
+
                     // resize the compositor which wil trigger a recalculation
                     // and unconditional render
                     self.compositor.resize(size);
