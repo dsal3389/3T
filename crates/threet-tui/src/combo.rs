@@ -9,7 +9,8 @@ use crate::event::KeyCode;
 // hand this callback over to `tokio::spawn` which would have required us to have `'static` lifetime
 pub type ComboCallback = fn(Context<'_>) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 
-// set the max combo depth for keys
+// set the max combo depth for keys, this is also to prevent
+// constant reallocation if user give a long combo
 pub const MAX_COMBO_DEPTH: usize = 8;
 
 /// a node that represent a key in a path, or an action
@@ -93,7 +94,7 @@ impl ComboRecorder {
     {
         for key in keys {
             if key.keycode == KeyCode::Esc {
-                self.0.clear();
+                self.clear();
             } else if self.0.len() < MAX_COMBO_DEPTH {
                 // prevent pushing keys to the vector, this will also not allow
                 // for more allocations from the vector
