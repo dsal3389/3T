@@ -174,7 +174,7 @@ impl<W: Write> App<W> {
     #[inline]
     fn render(&mut self) {
         self.terminal
-            .draw(|frame| self.compositor.render(frame.buffer_mut()))
+            .draw(|frame| self.compositor.render(frame.area(), frame.buffer_mut()))
             .unwrap();
     }
 }

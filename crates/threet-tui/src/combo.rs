@@ -4,7 +4,6 @@ use std::pin::Pin;
 use crate::app::Context;
 use crate::event::Key;
 use crate::event::KeyCode;
-use crate::views::View;
 
 // lifetime: the returned future is bounded to the `Context` lifetime, it is possible because we don't
 // hand this callback over to `tokio::spawn` which would have required us to have `'static` lifetime
@@ -79,6 +78,7 @@ impl ComboRegister {
     }
 }
 
+#[repr(transparent)]
 pub struct ComboRecorder(Vec<Key>);
 
 impl ComboRecorder {

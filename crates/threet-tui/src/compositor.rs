@@ -375,13 +375,22 @@ impl Compositor {
     /// renders the views into the given buffer, compositor doesn't accept area because
     /// it will use whatever it has calculated in the tree
     #[inline(always)]
-    pub fn render(&mut self, buffer: &mut Buffer) {
-        for (area, view) in &self.tree {
-            let block = Block::new().borders(Borders::RIGHT | Borders::TOP);
-            let inner_area = block.inner(area);
+    pub fn render(&mut self, area: Rect, buffer: &mut Buffer) {
+        for (view_area, view) in &self.tree {
+            let mut borders = Borders::empty();
+
+            if area.y != view_area.y {
+                borders |= Borders::TOP;
+            }
+            if area.width != view_area.x + view_area.width {
+                borders |= Borders::RIGHT;
+            }
+
+            let block = Block::new().borders(borders);
+            let inner_area = block.inner(view_area);
 
             // TODO: show lines instead of blocks
-            block.render(area, buffer);
+            block.render(view_area, buffer);
             view.view.render(inner_area, buffer);
         }
     }

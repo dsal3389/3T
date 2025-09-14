@@ -35,6 +35,7 @@ use super::View;
 static COMBOS: LazyLock<ComboRegister> = LazyLock::new(|| {
     let mut combos = ComboRegister::new();
     combos.add(vec![Key::from_utf8(&[0x61])], add_window);
+    combos.add(vec![Key::from_utf8(&[0x62])], add_window2);
     combos
 });
 
@@ -43,6 +44,16 @@ fn add_window<'a>(cx: Context<'a>) -> Pin<Box<dyn Future<Output = ()> + Send + '
         cx.compositor.split_view(
             Box::new(AuthenticateView::new(cx.dispatcher.clone())),
             crate::compositor::Layout::Vertical,
+        );
+        cx.dispatcher.send(Event::Render).await.unwrap();
+    })
+}
+
+fn add_window2<'a>(cx: Context<'a>) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
+    Box::pin(async move {
+        cx.compositor.split_view(
+            Box::new(AuthenticateView::new(cx.dispatcher.clone())),
+            crate::compositor::Layout::Horizontal,
         );
         cx.dispatcher.send(Event::Render).await.unwrap();
     })
