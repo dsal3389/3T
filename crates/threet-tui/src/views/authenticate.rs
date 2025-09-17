@@ -39,6 +39,14 @@ static COMBOS: LazyLock<ComboRegister> = LazyLock::new(|| {
     combos
 });
 
+fn swap_window<'a>(cx: Context<'a>) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
+    Box::pin(async move {
+        cx.compositor
+            .swap(Box::new(crate::views::chat::ChatView::new()));
+        cx.dispatcher.send(Event::Render).await.unwrap();
+    })
+}
+
 fn add_window<'a>(cx: Context<'a>) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
     Box::pin(async move {
         cx.compositor.split_view(

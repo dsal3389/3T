@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::ops::Deref;
 
 use async_trait::async_trait;
@@ -75,7 +76,7 @@ pub enum HandlekeysResults<'a> {
 /// the view is the one who controls the mode, what key binds there are
 /// what to display and where
 #[async_trait]
-pub trait View: Send + 'static {
+pub trait View: Any + Send + 'static {
     /// the view name
     fn name(&self) -> &str;
 

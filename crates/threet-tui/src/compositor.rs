@@ -110,6 +110,11 @@ impl Tree {
         self.nodes.values().filter(|node| node.is_view()).count()
     }
 
+    fn swap(&mut self, view: Box<dyn View>) {
+        let view_node = self.get_focuse_mut();
+        view_node.view = view;
+    }
+
     fn push(&mut self, view: Box<dyn View>) -> ViewId {
         let parent = self.nodes[self.focuse].parent;
         let mut node = Node::view(view);
@@ -223,17 +228,17 @@ impl Tree {
     }
 
     #[inline]
-    fn get_focuse(&self) -> &dyn View {
-        match self.nodes[self.focuse].data {
-            NodeData::View(NodeViewData { ref view, .. }) => view.as_ref(),
+    fn get_focuse(&self) -> &NodeViewData {
+        match &self.nodes[self.focuse].data {
+            NodeData::View(view) => view,
             _ => unreachable!(),
         }
     }
 
     #[inline]
-    fn get_focuse_mut(&mut self) -> &mut dyn View {
-        match self.nodes[self.focuse].data {
-            NodeData::View(NodeViewData { ref mut view, .. }) => view.as_mut(),
+    fn get_focuse_mut(&mut self) -> &mut NodeViewData {
+        match &mut self.nodes[self.focuse].data {
+            NodeData::View(view) => view,
             _ => unreachable!(),
         }
     }
@@ -352,6 +357,11 @@ impl Compositor {
     }
 
     #[inline(always)]
+    pub fn swap(&mut self, view: Box<dyn View>) {
+        self.tree.swap(view);
+    }
+
+    #[inline(always)]
     pub fn split_view(&mut self, view: Box<dyn View + Sync + 'static>, layout: Layout) {
         self.tree.split(view, layout);
     }
@@ -364,12 +374,12 @@ impl Compositor {
 
     #[inline(always)]
     pub fn current_view(&self) -> &dyn View {
-        self.tree.get_focuse()
+        self.tree.get_focuse().view.as_ref()
     }
 
     #[inline(always)]
     pub fn current_view_mut(&mut self) -> &mut dyn View {
-        self.tree.get_focuse_mut()
+        self.tree.get_focuse_mut().view.as_mut()
     }
 
     /// renders the views into the given buffer, compositor doesn't accept area because

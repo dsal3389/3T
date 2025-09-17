@@ -24,6 +24,7 @@ use crate::event::Key;
 use crate::event::KeyCode;
 use crate::views::AuthenticateView;
 use crate::views::HandlekeysResults;
+use crate::views::View;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
@@ -44,9 +45,8 @@ pub struct App<W: Write> {
     events: Receiver<Event>,
     events_sender: Sender<Event>,
     terminal: Terminal<CrosstermBackend<W>>,
-    mode: Mode,
-
     compositor: Compositor,
+    mode: Mode,
 
     /// vector of the current keys pressed by the user
     /// to match with the combo, this vector is filled when
@@ -140,8 +140,8 @@ impl<W: Write> App<W> {
                     match view.handle_keys(self.recorder.as_ref()).await {
                         HandlekeysResults::Callback(callback) => {
                             let cx = Context {
-                                dispatcher: self.events_sender.clone(),
                                 compositor: &mut self.compositor,
+                                dispatcher: self.events_sender.clone(),
                                 user: self.user.as_ref(),
                                 mode: self.mode,
                             };
