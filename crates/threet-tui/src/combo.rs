@@ -63,9 +63,10 @@ impl ComboRegister {
     #[inline(always)]
     pub fn add<I>(&mut self, keys: I, callback: ComboCallback)
     where
-        I: IntoIterator<Item = Key>,
+        I: IntoIterator,
+        I::Item: Into<Key>,
     {
-        self.root.add(keys.into_iter(), callback)
+        self.root.add(keys.into_iter().map(|i| i.into()), callback)
     }
 
     #[inline(always)]
@@ -87,20 +88,24 @@ impl ComboRecorder {
         ComboRecorder(Vec::with_capacity(MAX_COMBO_DEPTH))
     }
 
-    /// extends the recorder inner buffer with the iterator keys
-    pub fn extend<I>(&mut self, keys: I)
-    where
-        I: IntoIterator<Item = Key>,
-    {
-        for key in keys {
-            if key.keycode == KeyCode::Esc {
-                self.clear();
-            } else if self.0.len() < MAX_COMBO_DEPTH {
-                // prevent pushing keys to the vector, this will also not allow
-                // for more allocations from the vector
-                self.0.push(key);
-            }
+    #[inline]
+    pub fn is_mepty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// pushes the given key to the combo record, return a boolean value inidicating
+    /// if the key indeed have an effect on the record
+    pub fn push(&mut self, key: Key) -> bool {
+        if key.keycode == KeyCode::Esc {
+            self.clear();
+            return true;
+        } else if self.0.len() < MAX_COMBO_DEPTH {
+            // prevent pushing keys to the vector, this will also not allow
+            // for more allocations from the vector
+            self.0.push(key);
+            return true;
         }
+        return false;
     }
 
     /// clear all the pressed keys in the recorder

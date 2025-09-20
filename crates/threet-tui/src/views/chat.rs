@@ -2,9 +2,10 @@ use std::sync::LazyLock;
 
 use async_trait::async_trait;
 
-use super::HandlekeysResults;
 use super::View;
 
+use crate::app::Mode;
+use crate::combo::ComboCallback;
 use crate::combo::ComboRegister;
 use crate::event::Key;
 
@@ -24,7 +25,7 @@ impl View for ChatView {
 
     fn render(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {}
 
-    async fn handle_keys<'a>(&mut self, key: &[Key]) -> HandlekeysResults<'a> {
-        HandlekeysResults::None
+    async fn handle_keys<'a>(&self, key: &[Key], mode: Mode) -> Option<&'a ComboCallback> {
+        None
     }
 }

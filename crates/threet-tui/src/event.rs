@@ -57,24 +57,6 @@ pub struct Key {
 }
 
 impl Key {
-    pub fn from_utf8(bytes: &[u8]) -> Key {
-        let keycode = match bytes[0] {
-            0x1b => KeyCode::Esc,
-            0x7f => KeyCode::Backspace,
-            0x9 => KeyCode::Tab,
-            0x20 => KeyCode::Space,
-            0xd | 0xa => KeyCode::Enter,
-            _ => {
-                let c = str::from_utf8(bytes).unwrap().chars().next().unwrap();
-                KeyCode::Char(c)
-            }
-        };
-        Key {
-            keycode,
-            modifiers: Modifier::NONE,
-        }
-    }
-
     pub fn from_bytes(bytes: &[u8]) -> Option<Key> {
         if bytes.is_empty() {
             return None;

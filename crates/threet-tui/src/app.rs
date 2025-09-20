@@ -1,5 +1,7 @@
 use std::io::Write;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use ratatui::TerminalOptions;
@@ -15,16 +17,31 @@ use tokio::sync::mpsc::channel;
 use tokio::time::MissedTickBehavior;
 use tokio::time::interval;
 
-use crate::combo::ComboCallback;
 use crate::combo::ComboRecorder;
+use crate::combo::ComboRegister;
 use crate::compositor::Compositor;
 use crate::compositor::Layout;
 use crate::event::Event;
 use crate::event::Key;
 use crate::event::KeyCode;
 use crate::views::AuthenticateView;
-use crate::views::HandlekeysResults;
-use crate::views::View;
+
+static NORMAL_COMBOS: LazyLock<ComboRegister> = LazyLock::new(|| {
+    let mut combo = ComboRegister::new();
+    combo.add([KeyCode::Char('a'); 1], new_vertical);
+    combo
+});
+
+fn new_vertical<'a>(cx: Context<'a>) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
+    Box::pin(async move {
+        // TODO: a default view
+        cx.compositor.split_view(
+            Box::new(AuthenticateView::new(cx.dispatcher.clone())),
+            Layout::Vertical,
+        );
+        cx.dispatcher.send(Event::Render).await.unwrap();
+    })
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
@@ -32,13 +49,33 @@ pub enum Mode {
     Normal,
 }
 
-/// context is used to passed to the compositor, and the
-/// compositor will pass the app context to the currently focused view
+/// the Context is passed to the callback that is returned by the view `handle_keys`, the returned
+/// call back need context about the application like the ability to manipulate the app `state`, interact
+/// with the view compositor or even send events to the application thus this object contain
+/// all the object the callback can interact
+///
+/// since the app processes each event one after the other, we can pass to the context mutable
+/// references.
 pub struct Context<'a> {
+    pub state: &'a mut AppState,
     pub compositor: &'a mut Compositor,
     pub dispatcher: Sender<Event>,
-    pub user: Option<&'a User>,
+}
+
+/// contains the application state that is share able, this is mostly used for
+/// the `Context` type so other callbacks can take a mutable reference to the `AppState`
+/// and change properties that will effect the app overall behaviour
+pub struct AppState {
     pub mode: Mode,
+
+    /// vector of the current keys pressed by the user
+    /// to match with the combo, this vector is filled when
+    /// the app mode is in `Normal` and the vector is emptied
+    /// when a `ESC` key is recieved
+    pub recorder: ComboRecorder,
+
+    /// defines the authenticated user for the current app
+    pub user: Option<User>,
 }
 
 pub struct App<W: Write> {
@@ -46,16 +83,7 @@ pub struct App<W: Write> {
     events_sender: Sender<Event>,
     terminal: Terminal<CrosstermBackend<W>>,
     compositor: Compositor,
-    mode: Mode,
-
-    /// vector of the current keys pressed by the user
-    /// to match with the combo, this vector is filled when
-    /// the app mode is in `Normal` and the vector is emptied
-    /// when a `ESC` key is recieved
-    recorder: ComboRecorder,
-
-    /// defines the authenticated user for the current app
-    user: Option<User>,
+    state: AppState,
 }
 
 impl<W: Write> App<W> {
@@ -80,14 +108,18 @@ impl<W: Write> App<W> {
             Layout::Vertical,
         );
 
+        let state = AppState {
+            mode: Mode::Normal,
+            recorder: ComboRecorder::new(),
+            user: None,
+        };
+
         let app = App {
             events: app_rx,
             events_sender: app_tx.clone(),
-            recorder: ComboRecorder::new(),
-            user: None,
-            mode: Mode::Normal,
             compositor,
             terminal,
+            state,
         };
         (app, app_tx)
     }
@@ -129,27 +161,7 @@ impl<W: Write> App<W> {
 
         while let Some(event) = self.events.recv().await {
             match event {
-                Event::Stdin(bytes) => {
-                    let Some(key) = Key::from_bytes(bytes.as_slice()) else {
-                        continue;
-                    };
-                    self.recorder.extend([key; 1]);
-
-                    let view = self.compositor.current_view_mut();
-
-                    match view.handle_keys(self.recorder.as_ref()).await {
-                        HandlekeysResults::Callback(callback) => {
-                            let cx = Context {
-                                compositor: &mut self.compositor,
-                                dispatcher: self.events_sender.clone(),
-                                user: self.user.as_ref(),
-                                mode: self.mode,
-                            };
-                            callback(cx).await;
-                        }
-                        _ => {}
-                    }
-                }
+                Event::Stdin(bytes) => self.handle_stdin(bytes).await,
                 Event::Resize(mut size) => {
                     self.terminal
                         .resize(Rect::new(0, 0, size.0, size.1))
@@ -169,6 +181,42 @@ impl<W: Write> App<W> {
             };
         }
         Ok(())
+    }
+
+    #[inline]
+    async fn handle_stdin(&mut self, bytes: Vec<u8>) {
+        let Some(key) = Key::from_bytes(bytes.as_slice()) else {
+            return;
+        };
+
+        // if the key was not pushed for some reason, or if the recorder
+        // is empty, we have no point processing the record
+        if !self.state.recorder.push(key) || self.state.recorder.is_mepty() {
+            return;
+        }
+
+        let mut app_callback = match self.state.mode {
+            Mode::Normal => NORMAL_COMBOS.get(self.state.recorder.as_ref()),
+            Mode::Insert => None,
+        };
+
+        if app_callback.is_none() {
+            app_callback = self
+                .compositor
+                .current_view_mut()
+                .handle_keys(self.state.recorder.as_ref(), self.state.mode)
+                .await;
+        }
+
+        if let Some(callback) = app_callback {
+            let cx = Context {
+                state: &mut self.state,
+                compositor: &mut self.compositor,
+                dispatcher: self.events_sender.clone(),
+            };
+            callback(cx).await;
+            self.state.recorder.clear();
+        }
     }
 
     #[inline]

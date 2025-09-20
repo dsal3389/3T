@@ -9,6 +9,7 @@ mod chat;
 
 pub use authenticate::AuthenticateView;
 
+use crate::app::Mode;
 use crate::combo::ComboCallback;
 use crate::event::Key;
 
@@ -68,11 +69,6 @@ where
     }
 }
 
-pub enum HandlekeysResults<'a> {
-    Callback(&'a ComboCallback),
-    None,
-}
-
 /// the view is the one who controls the mode, what key binds there are
 /// what to display and where
 #[async_trait]
@@ -88,7 +84,7 @@ pub trait View: Any + Send + 'static {
     /// called when an input received, the viewer
     /// will decide how to handle it and what to do with it
     /// the returned boolean indicate if the app should rerender
-    async fn handle_keys<'a>(&mut self, keys: &[Key]) -> HandlekeysResults<'a>;
+    async fn handle_keys<'a>(&self, keys: &[Key], mode: Mode) -> Option<&'a ComboCallback>;
 
     /// called on every tick so the view can update its internal state
     async fn tick(&mut self) {}
