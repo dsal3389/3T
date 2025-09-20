@@ -1,9 +1,9 @@
 use std::time::Duration;
 
+use async_trait::async_trait;
 use ratatui::layout::Constraint;
 use ratatui::layout::Layout;
 use ratatui::prelude::*;
-use ratatui::style::Styled;
 use ratatui::text::ToLine;
 use ratatui::widgets::Block;
 use ratatui::widgets::Padding;
@@ -14,11 +14,12 @@ use tokio::task::JoinHandle;
 use threet_storage::get_database;
 use threet_storage::models::User;
 
+use crate::app::Mode;
+use crate::combo::ComboCallback;
 use crate::event::Event;
-use crate::event::KeyCode;
+use crate::event::Key;
 use crate::notifications::Notification;
 use crate::utils::get_middle_area;
-use crate::views::ViewKind;
 use crate::widgets::ButtonWidget;
 use crate::widgets::Field;
 use crate::widgets::FieldBuilder;
@@ -27,7 +28,8 @@ use crate::widgets::FieldKind;
 use super::Focuse;
 use super::FocuseIterator;
 use super::View;
-use super::ViewMode;
+
+mod combos;
 
 #[derive(Default, Clone)]
 enum FocuseArea {
@@ -75,7 +77,6 @@ impl FocuseIterator for FocuseArea {
 pub struct AuthenticateView {
     app_tx: Sender<Event>,
     focuse: Focuse<FocuseArea>,
-    mode: ViewMode,
 
     // authentication task will contain the task handler for the
     // authentication, it is a separate task to not block the processor
@@ -105,7 +106,6 @@ impl AuthenticateView {
             password,
             authentication_task: None,
             focuse: Focuse::default(),
-            mode: ViewMode::default(),
         }
     }
 
@@ -120,7 +120,6 @@ impl AuthenticateView {
                 match User::by_username_password(get_database(), &username, &password).await {
                     Some(user) => {
                         app_tx.send(Event::SetUser(user)).await.unwrap();
-                        app_tx.send(Event::SetView(ViewKind::Chat)).await.unwrap();
                     }
                     None => {
                         let notification = Notification::error(
@@ -147,76 +146,24 @@ impl AuthenticateView {
     }
 }
 
+#[async_trait]
 impl View for AuthenticateView {
     #[inline]
     fn name(&self) -> &str {
         "Authentication"
     }
 
-    #[inline]
-    fn mode(&self) -> ViewMode {
-        self.mode.clone()
-    }
-
-    async fn handle_key(&mut self, keycode: KeyCode) -> bool {
+    async fn handle_keys<'a>(&self, keys: &[Key], mode: Mode) -> Option<&'a ComboCallback> {
         // if authentication task is running we should not handle
         // any new key event and we don't need to rerender the screen
         if self.is_authentication_task_running() {
-            return false;
+            return None;
         }
 
-        // most of the actions in the view require rerendering, so
-        // it will be easier to start with a truthy value
-        let mut should_rerender = true;
-
-        match self.mode {
-            ViewMode::Normal => match keycode {
-                KeyCode::Char('k') => self.focuse.previous(),
-                KeyCode::Char('j') | KeyCode::Tab => self.focuse.next(),
-
-                // if the current focuse is not an input field, we don't want
-                // to enter Insert mode because there is no point
-                KeyCode::Char('i') | KeyCode::Char('a')
-                    if matches!(
-                        self.focuse.current(),
-                        FocuseArea::UsernameField | FocuseArea::PasswordField
-                    ) =>
-                {
-                    self.mode = ViewMode::Insert;
-                }
-                KeyCode::Space | KeyCode::Enter if self.focuse.is_authenticate_button() => {
-                    self.start_authentication_task()
-                }
-                _ => {
-                    should_rerender = false;
-                }
-            },
-            ViewMode::Insert => match keycode {
-                KeyCode::Esc => {
-                    self.mode = ViewMode::Normal;
-                }
-                // TODO: find a better way to push char based on focuse
-                KeyCode::Char(..) | KeyCode::Space => {
-                    should_rerender = match self.focuse.current() {
-                        FocuseArea::UsernameField => self.username.push_char(keycode.into()),
-                        FocuseArea::PasswordField => self.password.push_char(keycode.into()),
-                        _ => false,
-                    };
-                }
-                // TODO: find a better way to push char based on focuse
-                KeyCode::Backspace => {
-                    should_rerender = match self.focuse.current() {
-                        FocuseArea::UsernameField => self.username.remove_char(),
-                        FocuseArea::PasswordField => self.password.remove_char(),
-                        _ => false,
-                    };
-                }
-                _ => {
-                    should_rerender = false;
-                }
-            },
-        };
-        should_rerender
+        match mode {
+            Mode::Normal => combos::NORMAL_MODE_COMBOS.get(keys),
+            Mode::Insert => todo!(),
+        }
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
