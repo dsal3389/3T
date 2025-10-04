@@ -2,6 +2,7 @@ mod app;
 mod bind;
 mod compositor;
 mod event;
+mod job;
 mod notifications;
 mod utils;
 mod views;

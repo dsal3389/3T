@@ -24,6 +24,7 @@ use crate::compositor::Layout;
 use crate::event::Event;
 use crate::event::Key;
 use crate::event::KeyCode;
+use crate::job::Job;
 use crate::views::AuthenticateView;
 
 static NORMAL_COMBOS: LazyLock<Binder> = LazyLock::new(|| {
@@ -58,6 +59,7 @@ pub enum Mode {
 /// references.
 pub struct Context<'a> {
     pub state: &'a mut AppState,
+    pub jobs: &'a mut Vec<Job>,
     pub compositor: &'a mut Compositor,
     pub dispatcher: Sender<Event>,
 }
@@ -76,6 +78,7 @@ pub struct App<W: Write> {
     events_sender: Sender<Event>,
     terminal: Terminal<CrosstermBackend<W>>,
     compositor: Compositor,
+    jobs: Vec<Job>,
 
     /// vector of the current keys pressed by the user
     /// to match with the combo, this vector is filled when
@@ -115,6 +118,7 @@ impl<W: Write> App<W> {
         let app = App {
             events: app_rx,
             events_sender: app_tx.clone(),
+            jobs: Vec::new(),
             bbuffer: BindBuffer::new(),
             compositor,
             terminal,
