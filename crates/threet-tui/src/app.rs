@@ -17,8 +17,8 @@ use tokio::sync::mpsc::channel;
 use tokio::time::MissedTickBehavior;
 use tokio::time::interval;
 
-use crate::combo::ComboRecorder;
-use crate::combo::ComboRegister;
+use crate::bind::BindBuffer;
+use crate::bind::Binder;
 use crate::compositor::Compositor;
 use crate::compositor::Layout;
 use crate::event::Event;
@@ -26,8 +26,8 @@ use crate::event::Key;
 use crate::event::KeyCode;
 use crate::views::AuthenticateView;
 
-static NORMAL_COMBOS: LazyLock<ComboRegister> = LazyLock::new(|| {
-    let mut combo = ComboRegister::new();
+static NORMAL_COMBOS: LazyLock<Binder> = LazyLock::new(|| {
+    let mut combo = Binder::new();
     combo.add([KeyCode::Char('a'); 1], new_vertical);
     combo
 });
@@ -67,13 +67,6 @@ pub struct Context<'a> {
 /// and change properties that will effect the app overall behaviour
 pub struct AppState {
     pub mode: Mode,
-
-    /// vector of the current keys pressed by the user
-    /// to match with the combo, this vector is filled when
-    /// the app mode is in `Normal` and the vector is emptied
-    /// when a `ESC` key is recieved
-    pub recorder: ComboRecorder,
-
     /// defines the authenticated user for the current app
     pub user: Option<User>,
 }
@@ -83,6 +76,12 @@ pub struct App<W: Write> {
     events_sender: Sender<Event>,
     terminal: Terminal<CrosstermBackend<W>>,
     compositor: Compositor,
+
+    /// vector of the current keys pressed by the user
+    /// to match with the combo, this vector is filled when
+    /// the app mode is in `Normal` and the vector is emptied
+    /// when a `ESC` key is recieved
+    bbuffer: BindBuffer,
     state: AppState,
 }
 
@@ -110,13 +109,13 @@ impl<W: Write> App<W> {
 
         let state = AppState {
             mode: Mode::Normal,
-            recorder: ComboRecorder::new(),
             user: None,
         };
 
         let app = App {
             events: app_rx,
             events_sender: app_tx.clone(),
+            bbuffer: BindBuffer::new(),
             compositor,
             terminal,
             state,
@@ -191,12 +190,12 @@ impl<W: Write> App<W> {
 
         // if the key was not pushed for some reason, or if the recorder
         // is empty, we have no point processing the record
-        if !self.state.recorder.push(key) || self.state.recorder.is_mepty() {
+        if !self.bbuffer.push(key) || self.bbuffer.is_mepty() {
             return;
         }
 
         let mut app_callback = match self.state.mode {
-            Mode::Normal => NORMAL_COMBOS.get(self.state.recorder.as_ref()),
+            Mode::Normal => NORMAL_COMBOS.get(self.bbuffer.as_ref()),
             Mode::Insert => None,
         };
 
@@ -204,7 +203,7 @@ impl<W: Write> App<W> {
             app_callback = self
                 .compositor
                 .current_view_mut()
-                .handle_keys(self.state.recorder.as_ref(), self.state.mode)
+                .handle_keys(self.bbuffer.as_ref(), self.state.mode)
                 .await;
         }
 
@@ -215,7 +214,7 @@ impl<W: Write> App<W> {
                 dispatcher: self.events_sender.clone(),
             };
             callback(cx).await;
-            self.state.recorder.clear();
+            self.bbuffer.clear();
         }
     }
 

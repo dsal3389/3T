@@ -15,7 +15,7 @@ use threet_storage::get_database;
 use threet_storage::models::User;
 
 use crate::app::Mode;
-use crate::combo::ComboCallback;
+use crate::bind::BindCallback;
 use crate::event::Event;
 use crate::event::Key;
 use crate::notifications::Notification;
@@ -30,6 +30,8 @@ use super::FocuseIterator;
 use super::View;
 
 mod combos;
+
+use combos::NORMAL_MODE_COMBOS;
 
 #[derive(Default, Clone)]
 enum FocuseArea {
@@ -148,12 +150,11 @@ impl AuthenticateView {
 
 #[async_trait]
 impl View for AuthenticateView {
-    #[inline]
     fn name(&self) -> &str {
-        "Authentication"
+        "authenticate"
     }
 
-    async fn handle_keys<'a>(&self, keys: &[Key], mode: Mode) -> Option<&'a ComboCallback> {
+    async fn handle_keys<'a>(&self, keys: &[Key], mode: Mode) -> Option<&'a BindCallback> {
         // if authentication task is running we should not handle
         // any new key event and we don't need to rerender the screen
         if self.is_authentication_task_running() {

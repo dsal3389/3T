@@ -1,5 +1,5 @@
 mod app;
-mod combo;
+mod bind;
 mod compositor;
 mod event;
 mod notifications;

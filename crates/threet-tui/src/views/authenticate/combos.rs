@@ -3,11 +3,11 @@ use std::sync::LazyLock;
 
 use crate::app::Context;
 use crate::app::Mode;
-use crate::combo::ComboRegister;
+use crate::bind::Binder;
 use crate::event::KeyCode;
 
-pub static NORMAL_MODE_COMBOS: LazyLock<ComboRegister> = LazyLock::new(|| {
-    let mut combos = ComboRegister::new();
+pub static NORMAL_MODE_COMBOS: LazyLock<Binder> = LazyLock::new(|| {
+    let mut combos = Binder::new();
     combos.add([KeyCode::Char('i'); 1], change_to_insert_mode);
     combos
 });

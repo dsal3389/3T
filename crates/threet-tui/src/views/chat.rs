@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use super::View;
 
 use crate::app::Mode;
-use crate::combo::ComboCallback;
-use crate::combo::ComboRegister;
+use crate::bind::BindCallback;
+use crate::bind::Binder;
 use crate::event::Key;
 
 pub struct ChatView {}
@@ -25,7 +25,7 @@ impl View for ChatView {
 
     fn render(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {}
 
-    async fn handle_keys<'a>(&self, key: &[Key], mode: Mode) -> Option<&'a ComboCallback> {
+    async fn handle_keys<'a>(&self, key: &[Key], mode: Mode) -> Option<&'a BindCallback> {
         None
     }
 }

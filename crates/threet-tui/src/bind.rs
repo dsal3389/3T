@@ -7,21 +7,21 @@ use crate::event::KeyCode;
 
 // lifetime: the returned future is bounded to the `Context` lifetime, it is possible because we don't
 // hand this callback over to `tokio::spawn` which would have required us to have `'static` lifetime
-pub type ComboCallback = fn(Context<'_>) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+pub type BindCallback = fn(Context<'_>) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 
 // set the max combo depth for keys, this is also to prevent
 // constant reallocation if user give a long combo
-pub const MAX_COMBO_DEPTH: usize = 8;
+pub const MAX_BIND_DEPTH: usize = 8;
 
 /// a node that represent a key in a path, or an action
 #[derive(Default)]
-struct Combo {
-    entries: BTreeMap<Key, Combo>,
-    callback: Option<ComboCallback>,
+struct Bind {
+    entries: BTreeMap<Key, Bind>,
+    callback: Option<BindCallback>,
 }
 
-impl Combo {
-    fn add<I>(&mut self, mut combo: I, callback: ComboCallback)
+impl Bind {
+    fn add<I>(&mut self, mut combo: I, callback: BindCallback)
     where
         I: Iterator<Item = Key>,
     {
@@ -36,7 +36,7 @@ impl Combo {
     }
 
     /// get the callback based on the given iterator next value
-    fn get<I>(&self, mut keys: I) -> Option<&ComboCallback>
+    fn get<I>(&self, mut keys: I) -> Option<&BindCallback>
     where
         I: Iterator<Item = Key>,
     {
@@ -48,20 +48,20 @@ impl Combo {
 }
 
 #[repr(transparent)]
-pub struct ComboRegister {
-    root: Combo,
+pub struct Binder {
+    root: Bind,
 }
 
-impl ComboRegister {
+impl Binder {
     pub fn new() -> Self {
         Self {
-            root: Combo::default(),
+            root: Bind::default(),
         }
     }
 
     /// add a combo to the combo register
     #[inline(always)]
-    pub fn add<I>(&mut self, keys: I, callback: ComboCallback)
+    pub fn add<I>(&mut self, keys: I, callback: BindCallback)
     where
         I: IntoIterator,
         I::Item: Into<Key>,
@@ -70,7 +70,7 @@ impl ComboRegister {
     }
 
     #[inline(always)]
-    pub fn get<I>(&self, keys: I) -> Option<&ComboCallback>
+    pub fn get<I>(&self, keys: I) -> Option<&BindCallback>
     where
         I: IntoIterator,
         I::Item: AsRef<Key>,
@@ -81,11 +81,11 @@ impl ComboRegister {
 }
 
 #[repr(transparent)]
-pub struct ComboRecorder(Vec<Key>);
+pub struct BindBuffer(Vec<Key>);
 
-impl ComboRecorder {
-    pub fn new() -> ComboRecorder {
-        ComboRecorder(Vec::with_capacity(MAX_COMBO_DEPTH))
+impl BindBuffer {
+    pub fn new() -> BindBuffer {
+        BindBuffer(Vec::with_capacity(MAX_BIND_DEPTH))
     }
 
     #[inline]
@@ -99,7 +99,7 @@ impl ComboRecorder {
         if key.keycode == KeyCode::Esc {
             self.clear();
             return true;
-        } else if self.0.len() < MAX_COMBO_DEPTH {
+        } else if self.0.len() < MAX_BIND_DEPTH {
             // prevent pushing keys to the vector, this will also not allow
             // for more allocations from the vector
             self.0.push(key);
@@ -115,7 +115,7 @@ impl ComboRecorder {
     }
 }
 
-impl AsRef<[Key]> for ComboRecorder {
+impl AsRef<[Key]> for BindBuffer {
     fn as_ref(&self) -> &[Key] {
         self.0.as_slice()
     }
